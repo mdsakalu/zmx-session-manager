@@ -26,7 +26,7 @@ homebrew_casks:
     repository:
       owner: mdsakalu
       name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/mdsakalu/zmx-session-manager"
     description: "TUI session manager for zmx"
     binaries:
