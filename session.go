@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/atotto/clipboard"
+	"github.com/mattn/go-runewidth"
 )
 
 // Session represents a zmx session parsed from `zmx list`.
@@ -77,8 +78,9 @@ func FetchSessions() ([]Session, error) {
 }
 
 // FetchPreview returns the last `lines` lines of `zmx history <name> --vt`,
-// with all ANSI escape sequences stripped and lines truncated to maxWidth.
-func FetchPreview(name string, lines, maxWidth int) string {
+// with all ANSI escape sequences stripped. Lines are NOT truncated so that
+// the caller can apply horizontal scrolling before display.
+func FetchPreview(name string, lines int) string {
 	out, err := exec.Command("zmx", "history", name, "--vt").CombinedOutput()
 	if err != nil {
 		return fmt.Sprintf("(preview unavailable: %v)", err)
@@ -92,22 +94,28 @@ func FetchPreview(name string, lines, maxWidth int) string {
 	if len(all) > lines {
 		start = len(all) - lines
 	}
-	selected := all[start:]
 
-	// Truncate each line to maxWidth and pad to fill the pane
-	for i, line := range selected {
+	return strings.Join(all[start:], "\n")
+}
+
+// ScrollPreview applies a horizontal offset and width to raw preview text,
+// truncating and padding each line for display in the preview pane.
+func ScrollPreview(raw string, offsetX, maxWidth int) string {
+	lines := strings.Split(raw, "\n")
+	for i, line := range lines {
+		// Skip offsetX cells from the left
+		skipped := 0
+		runeIdx := 0
 		runes := []rune(line)
-		if len(runes) > maxWidth {
-			runes = runes[:maxWidth]
+		for runeIdx < len(runes) && skipped < offsetX {
+			w := runewidth.RuneWidth(runes[runeIdx])
+			skipped += w
+			runeIdx++
 		}
-		// Pad with spaces to overwrite any previous content
-		if len(runes) < maxWidth {
-			runes = append(runes, make([]rune, maxWidth-len(runes))...)
-		}
-		selected[i] = string(runes)
+		rest := string(runes[runeIdx:])
+		lines[i] = runewidth.FillRight(runewidth.Truncate(rest, maxWidth, ""), maxWidth)
 	}
-
-	return strings.Join(selected, "\n")
+	return strings.Join(lines, "\n")
 }
 
 // KillSession runs `zmx kill <name>`.

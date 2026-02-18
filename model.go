@@ -10,11 +10,12 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-runewidth"
 )
 
 const (
-	listOuterWidth   = 42
-	logContentHeight = 4
+	listMaxOuterWidth = 50
+	logContentHeight  = 4
 )
 
 type state int
@@ -42,7 +43,7 @@ func (s sortMode) label() string {
 	case sortByClients:
 		return "clients"
 	case sortByPID:
-		return "newest"
+		return "pid"
 	}
 	return ""
 }
@@ -79,9 +80,9 @@ func fetchSessionsCmd() tea.Msg {
 	return sessionsMsg{sessions: sessions, err: err}
 }
 
-func fetchPreviewCmd(name string, lines, maxWidth int) tea.Cmd {
+func fetchPreviewCmd(name string, lines int) tea.Cmd {
 	return func() tea.Msg {
-		return previewMsg{content: FetchPreview(name, lines, maxWidth)}
+		return previewMsg{content: FetchPreview(name, lines)}
 	}
 }
 
@@ -131,11 +132,13 @@ type Model struct {
 
 	filterText   string
 	sortMode     sortMode
+	sortAsc      bool
 	attachTarget string // non-empty → exec zmx attach after quit
 
-	preview string
-	state   state
-	status  string
+	preview       string
+	previewScrollX int
+	state          state
+	status         string
 
 	// Kill tracking
 	killQueue     []string
@@ -154,6 +157,7 @@ type Model struct {
 func initialModel() Model {
 	return Model{
 		selected: make(map[string]bool),
+		sortAsc:  true,
 	}
 }
 
@@ -173,15 +177,19 @@ func (m Model) visibleSessions() []Session {
 		}
 	}
 
+	dir := 1
+	if !m.sortAsc {
+		dir = -1
+	}
 	switch m.sortMode {
 	case sortByName:
 		slices.SortFunc(filtered, func(a, b Session) int {
-			return cmp.Compare(a.Name, b.Name)
+			return dir * cmp.Compare(a.Name, b.Name)
 		})
 	case sortByClients:
 		slices.SortFunc(filtered, func(a, b Session) int {
 			if a.Clients != b.Clients {
-				return b.Clients - a.Clients
+				return dir * (a.Clients - b.Clients)
 			}
 			return cmp.Compare(a.Name, b.Name)
 		})
@@ -190,7 +198,7 @@ func (m Model) visibleSessions() []Session {
 			ai, _ := strconv.Atoi(a.PID)
 			bi, _ := strconv.Atoi(b.PID)
 			if ai != bi {
-				return bi - ai
+				return dir * (ai - bi)
 			}
 			return cmp.Compare(a.Name, b.Name)
 		})
@@ -326,7 +334,7 @@ func (m Model) previewCmd() tea.Cmd {
 	if m.cursor >= len(visible) {
 		return nil
 	}
-	return fetchPreviewCmd(visible[m.cursor].Name, m.mainContentHeight(), m.previewInnerWidth())
+	return fetchPreviewCmd(visible[m.cursor].Name, m.mainContentHeight(1))
 }
 
 func (m Model) killTargets() []string {
@@ -375,6 +383,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyUp:
 		if m.cursor > 0 {
 			m.cursor--
+			m.previewScrollX = 0
 			m.ensureVisible()
 			return m, m.previewCmd()
 		}
@@ -382,8 +391,29 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		if m.cursor < len(visible)-1 {
 			m.cursor++
+			m.previewScrollX = 0
 			m.ensureVisible()
 			return m, m.previewCmd()
+		}
+
+	case tea.KeyLeft:
+		if m.previewScrollX > 0 {
+			m.previewScrollX -= 4
+			if m.previewScrollX < 0 {
+				m.previewScrollX = 0
+			}
+		}
+
+	case tea.KeyRight:
+		maxW := previewMaxWidth(m.preview)
+		limit := maxW - m.previewInnerWidth()
+		if limit < 0 {
+			limit = 0
+		}
+		if m.previewScrollX+4 <= limit {
+			m.previewScrollX += 4
+		} else {
+			m.previewScrollX = limit
 		}
 
 	case tea.KeySpace:
@@ -428,7 +458,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			case "/":
 				m.state = stateFilter
 			case "s":
-				m.sortMode = (m.sortMode + 1) % sortModeCount
+				if m.sortAsc {
+					m.sortAsc = false
+				} else {
+					m.sortAsc = true
+					m.sortMode = (m.sortMode + 1) % sortModeCount
+				}
 				m.cursor = 0
 				m.listOffset = 0
 				return m, m.previewCmd()
@@ -561,7 +596,7 @@ func (m *Model) handleLogScroll(msg tea.KeyPressMsg) {
 }
 
 func (m *Model) ensureVisible() {
-	h := m.mainContentHeight()
+	h := m.mainContentHeight(1)
 	if h <= 0 {
 		return
 	}
@@ -573,22 +608,68 @@ func (m *Model) ensureVisible() {
 	}
 }
 
+// previewMaxWidth returns the widest line (in cells) in the raw preview text.
+func previewMaxWidth(raw string) int {
+	maxW := 0
+	for _, line := range strings.Split(raw, "\n") {
+		if w := runewidth.StringWidth(line); w > maxW {
+			maxW = w
+		}
+	}
+	return maxW
+}
+
 // Layout
 
-func (m Model) mainContentHeight() int {
-	h := m.height - logContentHeight - 5
+func (m Model) mainContentHeight(helpLines int) int {
+	// 4 = 2 (list/preview borders) + 2 (log borders)
+	h := m.height - logContentHeight - 4 - helpLines
 	if h < 1 {
 		h = 1
 	}
 	return h
 }
 
+// listOuterWidth computes the list pane width from session content.
+// Row layout: indicator(2) + name + " " + pid + " " + client + borders(2)
+func (m Model) listOuterWidth() int {
+	// Minimum: must fit the title elements.
+	// Left: " zmx sessions (NNN) " or " zmx (N/NNN) [NN sel] "
+	// Right: " ↓ clients " (longest sort label = 7 chars + arrows + spaces)
+	// Border chrome: ╭─ ... ╮ = 3, plus at least 1 fill char
+	n := len(m.sessions)
+	digits := len(fmt.Sprintf("%d", n))
+	// Worst-case left: " zmx (NNN/NNN) [NN sel] " when filtering with all selected
+	titleMin := 4 + len(" zmx (/") + digits*2 + len(") ") + len("[") + digits + len(" sel] ") + len(" ↓ clients ")
+
+	w := titleMin
+	for _, s := range m.sessions {
+		clientW := 2 // "○0" or "●N"
+		if s.Clients >= 10 {
+			clientW = len(fmt.Sprintf("●%d", s.Clients))
+		}
+		// 2 (indicator) + name + 1 (space) + pid + 1 (space) + client + 2 (borders)
+		row := 2 + len(s.Name) + 1 + len(s.PID) + 1 + clientW + 2
+		if row > w {
+			w = row
+		}
+	}
+	if w > listMaxOuterWidth {
+		w = listMaxOuterWidth
+	}
+	// Don't let the list take more than half the terminal
+	if half := m.width / 2; w > half && half >= titleMin {
+		w = half
+	}
+	return w
+}
+
 func (m Model) listInnerWidth() int {
-	return listOuterWidth - 2
+	return m.listOuterWidth() - 2
 }
 
 func (m Model) previewOuterWidth() int {
-	w := m.width - listOuterWidth
+	w := m.width - m.listOuterWidth()
 	if w < 10 {
 		w = 10
 	}
@@ -614,33 +695,46 @@ func (m Model) View() tea.View {
 	}
 
 	visible := m.visibleSessions()
-	ch := m.mainContentHeight()
+
+	// Compute help first so we know its height for layout
+	help := m.renderHelp()
+	helpLines := strings.Count(help, "\n") + 1
+	ch := m.mainContentHeight(helpLines)
 
 	// --- List pane ---
 	listContent := m.renderList(visible, ch)
 	listContent = clampLines(listContent, ch)
 
 	selCount := len(m.selected)
-	listTitle := fmt.Sprintf(" zmx sessions (%d) ", len(visible))
+	listTitleLeft := fmt.Sprintf(" zmx sessions (%d) ", len(visible))
 	if len(visible) != len(m.sessions) {
-		listTitle = fmt.Sprintf(" zmx (%d/%d) ", len(visible), len(m.sessions))
+		listTitleLeft = fmt.Sprintf(" zmx (%d/%d) ", len(visible), len(m.sessions))
 	}
 	if selCount > 0 {
-		listTitle += fmt.Sprintf("[%d sel] ", selCount)
+		listTitleLeft += fmt.Sprintf("[%d sel] ", selCount)
 	}
-	listTitle += fmt.Sprintf("sort:%s ", m.sortMode.label())
+	sortArrow := "↑"
+	if !m.sortAsc {
+		sortArrow = "↓"
+	}
+	listTitleRight := fmt.Sprintf(" %s %s ", sortArrow, m.sortMode.label())
 
+	low := m.listOuterWidth()
 	listPane := listBorderStyle.
-		Width(listOuterWidth).
+		Width(low).
 		Height(ch + 2).
 		Render(listContent)
-	listPane = replaceTopBorder(listPane, buildTopBorder(listTitle, listOuterWidth))
+	listPane = replaceTopBorder(listPane, buildTopBorderLR(listTitleLeft, listTitleRight, low))
 
 	// --- Preview pane ---
-	previewContent := clampLines(m.preview, ch)
-	previewTitle := " Preview "
+	pw := m.previewInnerWidth()
+	previewContent := clampLines(ScrollPreview(m.preview, m.previewScrollX, pw), ch)
+	previewTitleLeft := " Preview "
+	previewTitleRight := ""
 	if m.cursor < len(visible) {
-		previewTitle = fmt.Sprintf(" %s ", truncate(visible[m.cursor].Name, m.previewInnerWidth()-4))
+		s := visible[m.cursor]
+		previewTitleLeft = fmt.Sprintf(" %s ", s.Name)
+		previewTitleRight = fmt.Sprintf(" 📂 %s ", s.DisplayDir())
 	}
 	pow := m.previewOuterWidth()
 
@@ -648,7 +742,7 @@ func (m Model) View() tea.View {
 		Width(pow).
 		Height(ch + 2).
 		Render(previewContent)
-	previewPane = replaceTopBorder(previewPane, buildTopBorder(previewTitle, pow))
+	previewPane = replaceTopBorder(previewPane, buildTopBorderLR(previewTitleLeft, previewTitleRight, pow))
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, listPane, previewPane)
 
@@ -665,9 +759,6 @@ func (m Model) View() tea.View {
 		logTitle = " Killing... "
 	}
 	logPane = replaceTopBorder(logPane, buildTopBorder(logTitle, m.width))
-
-	// --- Help bar ---
-	help := m.renderHelp()
 
 	full := lipgloss.JoinVertical(lipgloss.Left, body, logPane, help)
 	v := tea.NewView(clampLines(full, m.height))
@@ -739,7 +830,13 @@ func (m Model) renderList(visible []Session, maxRows int) string {
 			clientInd = inactiveClientStyle.Render("○0")
 		}
 
-		nameWidth := lw - 6
+		pidStr := logDimStyle.Render(s.PID)
+		pidWidth := len(s.PID)
+
+		clientWidth := lipgloss.Width(clientInd)
+
+		// lw = indicator(2) + name + " "(1) + pid + " "(1) + client
+		nameWidth := lw - 4 - pidWidth - clientWidth
 		if nameWidth < 10 {
 			nameWidth = 10
 		}
@@ -750,7 +847,7 @@ func (m Model) renderList(visible []Session, maxRows int) string {
 			style = selectedStyle
 		}
 
-		row := fmt.Sprintf("%s%s %s", indicator, style.Render(padRight(name, nameWidth)), clientInd)
+		row := fmt.Sprintf("%s%s %s %s", indicator, style.Render(padRight(name, nameWidth)), pidStr, clientInd)
 		b.WriteString(row)
 		if i < end-1 {
 			b.WriteString("\n")
@@ -779,6 +876,7 @@ func (m Model) renderHelp() string {
 	}
 
 	parts := []string{
+		helpKeyStyle.Render("←→") + helpStyle.Render(" scroll"),
 		helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav"),
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),
@@ -797,13 +895,40 @@ func (m Model) renderHelp() string {
 		helpKeyStyle.Render("q")+helpStyle.Render(" quit"),
 	)
 
-	help := " " + strings.Join(parts, "  ")
-
 	if m.status != "" {
-		help += "  " + statusStyle.Render(m.status)
+		parts = append(parts, statusStyle.Render(m.status))
 	}
 
-	return help
+	return wrapHelpParts(parts, m.width)
+}
+
+// wrapHelpParts joins help items with wrapping at maxWidth.
+func wrapHelpParts(parts []string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return " " + strings.Join(parts, "  ")
+	}
+	var lines []string
+	line := " "
+	lineW := 1
+	for i, p := range parts {
+		pw := lipgloss.Width(p)
+		sep := "  "
+		sepW := 2
+		if i == 0 {
+			sep = ""
+			sepW = 0
+		}
+		if lineW+sepW+pw > maxWidth && lineW > 1 {
+			lines = append(lines, line)
+			line = " " + p
+			lineW = 1 + pw
+		} else {
+			line += sep + p
+			lineW += sepW + pw
+		}
+	}
+	lines = append(lines, line)
+	return strings.Join(lines, "\n")
 }
 
 // Border helpers
@@ -811,22 +936,57 @@ func (m Model) renderHelp() string {
 var borderCharStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 func buildTopBorder(title string, outerWidth int) string {
-	maxTitleVW := outerWidth - 4
-	if maxTitleVW < 1 {
-		maxTitleVW = 1
-	}
-	if lipgloss.Width(title) > maxTitleVW {
-		title = truncate(title, maxTitleVW)
-	}
-	styledTitle := titleStyle.Render(title)
-	titleVW := lipgloss.Width(styledTitle)
+	return buildTopBorderLR(title, "", outerWidth)
+}
 
-	fill := outerWidth - 3 - titleVW
+func buildTopBorderLR(left, right string, outerWidth int) string {
+	styledLeft := titleStyle.Render(left)
+	leftVW := lipgloss.Width(styledLeft)
+
+	var styledRight string
+	var rightVW int
+	if right != "" {
+		styledRight = logDimStyle.Render(right)
+		rightVW = lipgloss.Width(styledRight)
+	}
+
+	maxVW := outerWidth - 4
+	if maxVW < 1 {
+		maxVW = 1
+	}
+
+	// Truncate right (dir) first to preserve left (session name)
+	if leftVW+rightVW > maxVW {
+		maxRight := maxVW - leftVW - 1
+		if maxRight < 4 {
+			// Not enough room for right at all, drop it
+			styledRight = ""
+			rightVW = 0
+		} else {
+			right = truncate(right, maxRight)
+			styledRight = logDimStyle.Render(right)
+			rightVW = lipgloss.Width(styledRight)
+		}
+	}
+	// If still too wide, truncate left
+	if leftVW+rightVW > maxVW {
+		left = truncate(left, maxVW-rightVW-1)
+		styledLeft = titleStyle.Render(left)
+		leftVW = lipgloss.Width(styledLeft)
+	}
+
+	fill := outerWidth - 3 - leftVW - rightVW
 	if fill < 0 {
 		fill = 0
 	}
 
-	return borderCharStyle.Render("╭─") + styledTitle + borderCharStyle.Render(strings.Repeat("─", fill)+"╮")
+	result := borderCharStyle.Render("╭─") + styledLeft
+	if styledRight != "" {
+		result += borderCharStyle.Render(strings.Repeat("─", fill)) + styledRight + borderCharStyle.Render("╮")
+	} else {
+		result += borderCharStyle.Render(strings.Repeat("─", fill)+"╮")
+	}
+	return result
 }
 
 func replaceTopBorder(pane, newTop string) string {
