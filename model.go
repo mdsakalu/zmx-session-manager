@@ -633,14 +633,13 @@ func (m Model) mainContentHeight(helpLines int) int {
 // listOuterWidth computes the list pane width from session content.
 // Row layout: indicator(2) + name + " " + pid + " " + client + borders(2)
 func (m Model) listOuterWidth() int {
-	// Minimum: must fit the title elements.
-	// Left: " zmx sessions (NNN) " or " zmx (N/NNN) [NN sel] "
-	// Right: " ↓ clients " (longest sort label = 7 chars + arrows + spaces)
-	// Border chrome: ╭─ ... ╮ = 3, plus at least 1 fill char
+	// Minimum: must fit the title elements (display widths, not byte lengths).
+	// Left (non-filtering is always wider): " zmx sessions (NNN) " = 17 + digits
+	// Right (longest sort label): " ↓ clients " = 11 display cells
+	// Border chrome: ╭─ ... ╮ = 4 (2 left + 1 right + 1 fill)
 	n := len(m.sessions)
 	digits := len(fmt.Sprintf("%d", n))
-	// Worst-case left: " zmx (NNN/NNN) ", right: " ↓ clients "
-	titleMin := 4 + len(" zmx (/") + digits*2 + len(") ") + len(" ↓ clients ")
+	titleMin := (17 + digits) + 11 + 4
 
 	w := titleMin
 	for _, s := range m.sessions {
@@ -992,7 +991,8 @@ func buildTopBorderLR(left, right string, outerWidth int) string {
 func buildBottomBorderR(right string, outerWidth int) string {
 	styledRight := logDimStyle.Render(right)
 	rightVW := lipgloss.Width(styledRight)
-	fill := outerWidth - 3 - rightVW
+	// ╰ (1) + fill + right (rightVW) + ╯ (1) = outerWidth
+	fill := outerWidth - 2 - rightVW
 	if fill < 0 {
 		fill = 0
 	}
