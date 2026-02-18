@@ -1,101 +1,66 @@
-package main
+package zmx
 
 import (
+	"bufio"
+	"context"
 	"fmt"
-	"os"
-	"os/exec"
+	"io"
 	"strings"
+	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/mattn/go-runewidth"
 )
-
-// Session represents a zmx session parsed from `zmx list`.
-type Session struct {
-	Name      string
-	PID       string
-	Clients   int
-	StartedIn string
-	Cmd       string
-}
-
-// DisplayDir returns a shortened version of StartedIn, replacing $HOME with ~.
-func (s Session) DisplayDir() string {
-	home, _ := os.UserHomeDir()
-	if home != "" && strings.HasPrefix(s.StartedIn, home) {
-		return "~" + s.StartedIn[len(home):]
-	}
-	return s.StartedIn
-}
-
-// FetchSessions parses `zmx list` output into a slice of Session.
-// Format: tab-separated key=value pairs per line.
-func FetchSessions() ([]Session, error) {
-	out, err := exec.Command("zmx", "list").CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("zmx list: %w\n%s", err, out)
-	}
-
-	var sessions []Session
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		s := Session{}
-		for _, field := range strings.Split(line, "\t") {
-			k, v, ok := strings.Cut(field, "=")
-			if !ok {
-				continue
-			}
-			switch k {
-			case "session_name":
-				s.Name = v
-			case "pid":
-				s.PID = v
-			case "clients":
-				if v == "0" {
-					s.Clients = 0
-				} else {
-					n := 0
-					for _, c := range v {
-						n = n*10 + int(c-'0')
-					}
-					s.Clients = n
-				}
-			case "started_in":
-				s.StartedIn = v
-			case "cmd":
-				s.Cmd = v
-			}
-		}
-		if s.Name != "" {
-			sessions = append(sessions, s)
-		}
-	}
-	return sessions, nil
-}
 
 // FetchPreview returns the last `lines` lines of `zmx history <name> --vt`,
 // with all ANSI escape sequences stripped. Lines are NOT truncated so that
 // the caller can apply horizontal scrolling before display.
 func FetchPreview(name string, lines int) string {
-	out, err := exec.Command("zmx", "history", name, "--vt").CombinedOutput()
+	if lines < 1 {
+		lines = 1
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := deps.commandContext(ctx, "zmx", "history", name, "--vt")
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Sprintf("(preview unavailable: %v)", err)
 	}
-
-	clean := stripANSI(string(out))
-	all := strings.Split(clean, "\n")
-
-	// Take last N lines
-	start := 0
-	if len(all) > lines {
-		start = len(all) - lines
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return fmt.Sprintf("(preview unavailable: %v)", err)
 	}
 
-	return strings.Join(all[start:], "\n")
+	preview, readErr := tailLinesFromReader(stdout, lines)
+	waitErr := cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "(preview unavailable: timed out)"
+	}
+	if readErr != nil {
+		return fmt.Sprintf("(preview unavailable: %v)", readErr)
+	}
+	if waitErr != nil {
+		return fmt.Sprintf("(preview unavailable: %v)", waitErr)
+	}
+	return preview
+}
+
+func tailLinesFromReader(r io.Reader, lines int) (string, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+
+	tail := make([]string, 0, lines)
+	for scanner.Scan() {
+		tail = append(tail, stripANSI(scanner.Text()))
+		if len(tail) > lines {
+			tail = tail[1:]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	return strings.Join(tail, "\n"), nil
 }
 
 // ScrollPreview applies a horizontal offset and width to raw preview text,
@@ -116,20 +81,6 @@ func ScrollPreview(raw string, offsetX, maxWidth int) string {
 		lines[i] = runewidth.FillRight(runewidth.Truncate(rest, maxWidth, ""), maxWidth)
 	}
 	return strings.Join(lines, "\n")
-}
-
-// KillSession runs `zmx kill <name>`.
-func KillSession(name string) error {
-	out, err := exec.Command("zmx", "kill", name).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("zmx kill %s: %w\n%s", name, err, out)
-	}
-	return nil
-}
-
-// CopyToClipboard copies text to the system clipboard.
-func CopyToClipboard(text string) error {
-	return clipboard.WriteAll(text)
 }
 
 // stripANSI removes all ANSI escape sequences and non-printable control

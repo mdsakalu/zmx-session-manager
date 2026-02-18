@@ -1,4 +1,4 @@
-package main
+package tui
 
 import "charm.land/lipgloss/v2"
 
@@ -61,4 +61,25 @@ var (
 
 	logDimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241"))
+
+	// List column styles
+	pidStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")) // neutral gray
+
+	memStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("180")) // warm tan/gold
+
+	uptimeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("109")) // muted blue
+
+	// Filter match highlight
+	filterMatchStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("228")).
+				Bold(true).
+				Underline(true)
+
+	// Sort indicator in pane title
+	sortStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("75")).
+			Bold(true)
 )

@@ -9,6 +9,18 @@ run = "go build -o zsm ."
 description = "Install zsm to $GOPATH/bin"
 run = "go install ."
 
+[tasks.fmt]
+description = "Format code"
+run = "gofmt -w ."
+
+[tasks.lint]
+description = "Run linter"
+run = "go vet ./..."
+
+[tasks.test]
+description = "Run tests"
+run = "go test ./..."
+
 [tasks.clean]
 description = "Remove built binary"
 run = "rm -f zsm"

@@ -7,13 +7,18 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mdsakalu/zmx-session-manager/internal/tui"
 )
 
-var version = "dev"
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "-v" || os.Args[1] == "--version") {
-		fmt.Println("zsm", version)
+		fmt.Printf("zsm %s (%s, %s)\n", version, commit, date)
 		return
 	}
 
@@ -23,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(tui.NewModel())
 	finalModel, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -31,8 +36,8 @@ func main() {
 	}
 
 	// If the user pressed Enter to attach, exec into zmx attach
-	if m, ok := finalModel.(Model); ok && m.attachTarget != "" {
+	if m, ok := finalModel.(tui.Model); ok && m.AttachTarget() != "" {
 		env := os.Environ()
-		syscall.Exec(zmxPath, []string{"zmx", "attach", m.attachTarget}, env)
+		syscall.Exec(zmxPath, []string{"zmx", "attach", m.AttachTarget()}, env)
 	}
 }
