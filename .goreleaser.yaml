@@ -21,7 +21,7 @@ archives:
   - format: tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
-homebrew_casks:
+brews:
   - name: zsm
     repository:
       owner: mdsakalu
@@ -29,8 +29,6 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/mdsakalu/zmx-session-manager"
     description: "TUI session manager for zmx"
-    binaries:
-      - zsm
 
 changelog:
   sort: asc
