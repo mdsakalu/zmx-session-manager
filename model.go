@@ -639,8 +639,8 @@ func (m Model) listOuterWidth() int {
 	// Border chrome: ╭─ ... ╮ = 3, plus at least 1 fill char
 	n := len(m.sessions)
 	digits := len(fmt.Sprintf("%d", n))
-	// Worst-case left: " zmx (NNN/NNN) [NN sel] " when filtering with all selected
-	titleMin := 4 + len(" zmx (/") + digits*2 + len(") ") + len("[") + digits + len(" sel] ") + len(" ↓ clients ")
+	// Worst-case left: " zmx (NNN/NNN) ", right: " ↓ clients "
+	titleMin := 4 + len(" zmx (/") + digits*2 + len(") ") + len(" ↓ clients ")
 
 	w := titleMin
 	for _, s := range m.sessions {
@@ -705,13 +705,9 @@ func (m Model) View() tea.View {
 	listContent := m.renderList(visible, ch)
 	listContent = clampLines(listContent, ch)
 
-	selCount := len(m.selected)
 	listTitleLeft := fmt.Sprintf(" zmx sessions (%d) ", len(visible))
 	if len(visible) != len(m.sessions) {
 		listTitleLeft = fmt.Sprintf(" zmx (%d/%d) ", len(visible), len(m.sessions))
-	}
-	if selCount > 0 {
-		listTitleLeft += fmt.Sprintf("[%d sel] ", selCount)
 	}
 	sortArrow := "↑"
 	if !m.sortAsc {
@@ -725,6 +721,10 @@ func (m Model) View() tea.View {
 		Height(ch + 2).
 		Render(listContent)
 	listPane = replaceTopBorder(listPane, buildTopBorderLR(listTitleLeft, listTitleRight, low))
+	if selCount := len(m.selected); selCount > 0 {
+		selLabel := fmt.Sprintf(" %d sel ", selCount)
+		listPane = replaceBottomBorder(listPane, buildBottomBorderR(selLabel, low))
+	}
 
 	// --- Preview pane ---
 	pw := m.previewInnerWidth()
@@ -987,6 +987,24 @@ func buildTopBorderLR(left, right string, outerWidth int) string {
 		result += borderCharStyle.Render(strings.Repeat("─", fill)+"╮")
 	}
 	return result
+}
+
+func buildBottomBorderR(right string, outerWidth int) string {
+	styledRight := logDimStyle.Render(right)
+	rightVW := lipgloss.Width(styledRight)
+	fill := outerWidth - 3 - rightVW
+	if fill < 0 {
+		fill = 0
+	}
+	return borderCharStyle.Render("╰"+strings.Repeat("─", fill)) + styledRight + borderCharStyle.Render("╯")
+}
+
+func replaceBottomBorder(pane, newBottom string) string {
+	lastNL := strings.LastIndex(pane, "\n")
+	if lastNL < 0 {
+		return pane
+	}
+	return pane[:lastNL+1] + newBottom
 }
 
 func replaceTopBorder(pane, newTop string) string {
