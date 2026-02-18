@@ -1,0 +1,14 @@
+[tools]
+go = "1.25"
+
+[tasks.build]
+description = "Build zsm binary"
+run = "go build -o zsm ."
+
+[tasks.install]
+description = "Install zsm to $GOPATH/bin"
+run = "go install ."
+
+[tasks.clean]
+description = "Remove built binary"
+run = "rm -f zsm"
