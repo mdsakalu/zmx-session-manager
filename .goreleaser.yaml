@@ -23,6 +23,7 @@ archives:
 
 brews:
   - name: zsm
+    directory: Formula
     repository:
       owner: mdsakalu
       name: homebrew-tap
