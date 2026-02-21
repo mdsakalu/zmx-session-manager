@@ -42,18 +42,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.Code {
 	case tea.KeyUp:
-		if m.cursor > 0 {
-			m.cursor--
-			m.previewScrollX = 0
-			m.ensureVisible()
+		if m.moveCursorUp(true) {
 			return m, m.previewCmd()
 		}
 
 	case tea.KeyDown:
-		if m.cursor < len(visible)-1 {
-			m.cursor++
-			m.previewScrollX = 0
-			m.ensureVisible()
+		if m.moveCursorDown(visible, true) {
 			return m, m.previewCmd()
 		}
 
@@ -96,17 +90,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	default:
 		switch key {
 		case "k":
-			if m.cursor > 0 {
-				m.cursor--
-				m.previewScrollX = 0
-				m.ensureVisible()
+			if m.moveCursorUp(true) {
 				return m, m.previewCmd()
 			}
 		case "j":
-			if m.cursor < len(visible)-1 {
-				m.cursor++
-				m.previewScrollX = 0
-				m.ensureVisible()
+			if m.moveCursorDown(visible, true) {
 				return m, m.previewCmd()
 			}
 		case "g":
@@ -236,17 +224,13 @@ func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyUp:
-		if m.cursor > 0 {
-			m.cursor--
-			m.ensureVisible()
+		if m.moveCursorUp(false) {
 			return m, m.previewCmd()
 		}
 
 	case tea.KeyDown:
 		visible := m.visibleSessions()
-		if m.cursor < len(visible)-1 {
-			m.cursor++
-			m.ensureVisible()
+		if m.moveCursorDown(visible, false) {
 			return m, m.previewCmd()
 		}
 
@@ -305,6 +289,30 @@ func (m *Model) handleLogScroll(msg tea.KeyPressMsg) {
 	if isRune(msg, "]") && m.logOffset < maxOffset {
 		m.logOffset++
 	}
+}
+
+func (m *Model) moveCursorUp(resetPreviewScroll bool) bool {
+	if m.cursor <= 0 {
+		return false
+	}
+	m.cursor--
+	if resetPreviewScroll {
+		m.previewScrollX = 0
+	}
+	m.ensureVisible()
+	return true
+}
+
+func (m *Model) moveCursorDown(visible []Session, resetPreviewScroll bool) bool {
+	if m.cursor >= len(visible)-1 {
+		return false
+	}
+	m.cursor++
+	if resetPreviewScroll {
+		m.previewScrollX = 0
+	}
+	m.ensureVisible()
+	return true
 }
 
 func (m *Model) ensureVisible() {
