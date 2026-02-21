@@ -18,6 +18,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.handleLogScroll(msg)
+	key := msg.String()
+	if key != "g" {
+		m.pendingGoTop = false
+	}
 
 	// Escape or Backspace clears active filter in normal mode
 	if (msg.Code == tea.KeyEscape || msg.Code == tea.KeyBackspace) && m.filterText != "" {
@@ -90,42 +94,73 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	default:
-		if msg.Text != "" {
-			switch msg.Text {
-			case "k":
-				targets := m.killTargets()
-				if len(targets) > 0 {
-					m.state = stateConfirmKill
-				}
-			case "c":
-				if m.cursor < len(visible) {
-					name := visible[m.cursor].Name
-					text := fmt.Sprintf("zmx attach %s", name)
-					if err := zmx.CopyToClipboard(text); err != nil {
-						m.status = fmt.Sprintf("Copy failed: %v", err)
-						m.addLog(confirmStyle.Render(fmt.Sprintf("  ✗ Copy failed: %v", err)))
-					} else {
-						m.status = "Copied!"
-						m.addLog(statusStyle.Render(fmt.Sprintf("  Copied: %s", text)))
-					}
-					return m, clearStatusAfter(2 * time.Second)
-				}
-			case "r":
-				return m, fetchSessionsCmd
-			case "/":
-				m.state = stateFilter
-			case "s":
-				if m.sortAsc {
-					m.sortAsc = false
-				} else {
-					m.sortAsc = true
-					m.sortMode = (m.sortMode + 1) % sortModeCount
-				}
-				m.markVisibleChanged()
-				m.cursor = 0
-				m.listOffset = 0
+		switch key {
+		case "k":
+			if m.cursor > 0 {
+				m.cursor--
+				m.previewScrollX = 0
+				m.ensureVisible()
 				return m, m.previewCmd()
 			}
+		case "j":
+			if m.cursor < len(visible)-1 {
+				m.cursor++
+				m.previewScrollX = 0
+				m.ensureVisible()
+				return m, m.previewCmd()
+			}
+		case "g":
+			if m.pendingGoTop {
+				m.pendingGoTop = false
+				if len(visible) > 0 {
+					m.cursor = 0
+					m.listOffset = 0
+					m.previewScrollX = 0
+					return m, m.previewCmd()
+				}
+				return m, nil
+			}
+			m.pendingGoTop = true
+		case "G", "shift+g":
+			if len(visible) > 0 {
+				m.cursor = len(visible) - 1
+				m.previewScrollX = 0
+				m.ensureVisible()
+				return m, m.previewCmd()
+			}
+		case "K", "shift+k":
+			targets := m.killTargets()
+			if len(targets) > 0 {
+				m.state = stateConfirmKill
+			}
+		case "c":
+			if m.cursor < len(visible) {
+				name := visible[m.cursor].Name
+				text := fmt.Sprintf("zmx attach %s", name)
+				if err := zmx.CopyToClipboard(text); err != nil {
+					m.status = fmt.Sprintf("Copy failed: %v", err)
+					m.addLog(confirmStyle.Render(fmt.Sprintf("  ✗ Copy failed: %v", err)))
+				} else {
+					m.status = "Copied!"
+					m.addLog(statusStyle.Render(fmt.Sprintf("  Copied: %s", text)))
+				}
+				return m, clearStatusAfter(2 * time.Second)
+			}
+		case "r":
+			return m, fetchSessionsCmd
+		case "/":
+			m.state = stateFilter
+		case "s":
+			if m.sortAsc {
+				m.sortAsc = false
+			} else {
+				m.sortAsc = true
+				m.sortMode = (m.sortMode + 1) % sortModeCount
+			}
+			m.markVisibleChanged()
+			m.cursor = 0
+			m.listOffset = 0
+			return m, m.previewCmd()
 		}
 	}
 

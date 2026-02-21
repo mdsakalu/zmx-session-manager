@@ -156,6 +156,7 @@ type Model struct {
 
 	preview        string
 	previewScrollX int
+	pendingGoTop   bool
 	state          state
 	status         string
 

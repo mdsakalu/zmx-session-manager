@@ -290,11 +290,11 @@ func (m Model) renderHelp() string {
 
 	parts := []string{
 		helpKeyStyle.Render("←→") + helpStyle.Render(" scroll"),
-		helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav"),
+		helpKeyStyle.Render("↑↓/jk/gg/G") + helpStyle.Render(" nav"),
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),
 		helpKeyStyle.Render("enter") + helpStyle.Render(" attach"),
-		helpKeyStyle.Render("k") + helpStyle.Render(" kill"),
+		helpKeyStyle.Render("K") + helpStyle.Render(" kill"),
 		helpKeyStyle.Render("c") + helpStyle.Render(" copy cmd"),
 		helpKeyStyle.Render("s") + helpStyle.Render(" sort"),
 	}
