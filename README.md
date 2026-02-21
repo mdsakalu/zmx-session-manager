@@ -40,11 +40,13 @@ go install github.com/mdsakalu/zmx-session-manager@latest
 
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Navigate sessions |
+| `↑` `↓` `j` `k` | Navigate sessions |
+| `gg` | Jump to first session |
+| `G` | Jump to last session |
 | `space` | Toggle selection |
 | `ctrl+a` | Select / deselect all |
 | `enter` | Attach to session |
-| `k` | Kill selected session(s) |
+| `K` | Kill selected session(s) |
 | `c` | Copy attach command |
 | `s` | Cycle sort mode (name / clients / newest) |
 | `/` | Filter sessions |
