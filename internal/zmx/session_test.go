@@ -152,7 +152,38 @@ func TestTailLinesFromReader_AtLeastOneLine(t *testing.T) {
 	}
 }
 
-func TestFetchSessionsWithInjectedDeps(t *testing.T) {
+func TestFetchSessionsNewFormat(t *testing.T) {
+	orig := deps
+	defer func() { deps = orig }()
+
+	deps.command = func(name string, arg ...string) *exec.Cmd {
+		script := "printf 'name=demo\\tpid=123\\tclients=0\\tcreated=1774179340\\tstart_dir=/Users/example/derp\\n'"
+		return exec.Command("sh", "-c", script)
+	}
+
+	got, err := FetchSessions()
+	if err != nil {
+		t.Fatalf("FetchSessions error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(got))
+	}
+	s := got[0]
+	if s.Name != "demo" {
+		t.Errorf("Name = %q, want %q", s.Name, "demo")
+	}
+	if s.PID != "123" {
+		t.Errorf("PID = %q, want %q", s.PID, "123")
+	}
+	if s.Clients != 0 {
+		t.Errorf("Clients = %d, want 0", s.Clients)
+	}
+	if s.StartedIn != "/Users/example/derp" {
+		t.Errorf("StartedIn = %q, want %q", s.StartedIn, "/Users/example/derp")
+	}
+}
+
+func TestFetchSessionsOldFormat(t *testing.T) {
 	orig := deps
 	defer func() { deps = orig }()
 
@@ -165,8 +196,24 @@ func TestFetchSessionsWithInjectedDeps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchSessions error: %v", err)
 	}
-	if len(got) != 1 || got[0].Name != "demo" || got[0].PID != "123" || got[0].Clients != 2 {
-		t.Fatalf("unexpected sessions parsed: %+v", got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(got))
+	}
+	s := got[0]
+	if s.Name != "demo" {
+		t.Errorf("Name = %q, want %q", s.Name, "demo")
+	}
+	if s.PID != "123" {
+		t.Errorf("PID = %q, want %q", s.PID, "123")
+	}
+	if s.Clients != 2 {
+		t.Errorf("Clients = %d, want 2", s.Clients)
+	}
+	if s.StartedIn != "/tmp" {
+		t.Errorf("StartedIn = %q, want %q", s.StartedIn, "/tmp")
+	}
+	if s.Cmd != "vim" {
+		t.Errorf("Cmd = %q, want %q", s.Cmd, "vim")
 	}
 }
 
