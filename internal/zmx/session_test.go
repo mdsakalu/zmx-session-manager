@@ -170,6 +170,24 @@ func TestFetchSessionsWithInjectedDeps(t *testing.T) {
 	}
 }
 
+func TestFetchSessionsWithZmx05ListKeys(t *testing.T) {
+	orig := deps
+	defer func() { deps = orig }()
+
+	deps.command = func(name string, arg ...string) *exec.Cmd {
+		script := "printf 'name=demo\\tpid=123\\tclients=2\\tcreated=1778106260\\tstart_dir=/tmp\\n'"
+		return exec.Command("sh", "-c", script)
+	}
+
+	got, err := FetchSessions()
+	if err != nil {
+		t.Fatalf("FetchSessions error: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "demo" || got[0].PID != "123" || got[0].Clients != 2 || got[0].StartedIn != "/tmp" {
+		t.Fatalf("unexpected sessions parsed: %+v", got)
+	}
+}
+
 func TestCopyToClipboardUsesInjectedDeps(t *testing.T) {
 	orig := deps
 	defer func() { deps = orig }()
