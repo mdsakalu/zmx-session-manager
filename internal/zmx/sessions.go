@@ -48,7 +48,7 @@ func FetchSessions() ([]Session, error) {
 				continue
 			}
 			switch k {
-			case "session_name":
+			case "session_name", "name":
 				s.Name = v
 			case "pid":
 				s.PID = v
@@ -62,7 +62,7 @@ func FetchSessions() ([]Session, error) {
 					}
 					s.Clients = n
 				}
-			case "started_in":
+			case "started_in", "start_dir":
 				s.StartedIn = v
 			case "cmd":
 				s.Cmd = v
