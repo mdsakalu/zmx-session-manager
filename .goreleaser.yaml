@@ -23,12 +23,20 @@ archives:
 
 homebrew_casks:
   - name: zsm
+    binaries: [zsm]
     repository:
       owner: mdsakalu
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/mdsakalu/zmx-session-manager"
     description: "TUI session manager for zmx"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/zsm"]
+          end
 
 changelog:
   sort: asc
