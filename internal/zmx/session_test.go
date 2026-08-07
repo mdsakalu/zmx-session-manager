@@ -183,6 +183,30 @@ func TestFetchSessionsNewFormat(t *testing.T) {
 	}
 }
 
+func TestFetchSessionsNewFormatCurrentSession(t *testing.T) {
+	orig := deps
+	defer func() { deps = orig }()
+
+	deps.command = func(name string, arg ...string) *exec.Cmd {
+		script := "printf '→ name=current\\tpid=456\\tclients=1\\tcreated=1774179340\\tstart_dir=/Users/example/current\\n'"
+		return exec.Command("sh", "-c", script)
+	}
+
+	got, err := FetchSessions()
+	if err != nil {
+		t.Fatalf("FetchSessions error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(got))
+	}
+	if got[0].Name != "current" {
+		t.Errorf("Name = %q, want %q", got[0].Name, "current")
+	}
+	if got[0].StartedIn != "/Users/example/current" {
+		t.Errorf("StartedIn = %q, want %q", got[0].StartedIn, "/Users/example/current")
+	}
+}
+
 func TestFetchSessionsOldFormat(t *testing.T) {
 	orig := deps
 	defer func() { deps = orig }()

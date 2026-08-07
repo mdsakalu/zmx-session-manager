@@ -37,6 +37,7 @@ func FetchSessions() ([]Session, error) {
 	var sessions []Session
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimPrefix(line, "→"))
 		if line == "" {
 			continue
 		}
