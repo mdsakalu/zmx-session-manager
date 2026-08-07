@@ -32,6 +32,26 @@ brew install mdsakalu/tap/zsm
 go install github.com/mdsakalu/zmx-session-manager@latest
 ```
 
+### Nix
+
+Run directly from the flake:
+
+```
+nix run github:mdsakalu/zmx-session-manager
+```
+
+Or install it into your profile:
+
+```
+nix profile install github:mdsakalu/zmx-session-manager
+```
+
+Open a development shell with the Go toolchain and project linters:
+
+```
+nix develop github:mdsakalu/zmx-session-manager
+```
+
 ## Requirements
 
 [zmx](https://github.com/neurosnap/zmx) must be installed and available in your `PATH`. zsm is tested with zmx 0.7.0 and retains compatibility with the legacy `session_name`/`started_in` list format.

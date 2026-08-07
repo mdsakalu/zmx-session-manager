@@ -21,3 +21,11 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build -o zsm .
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v31
+      - run: nix flake check --all-systems --no-build
+      - run: nix build .#default
