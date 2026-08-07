@@ -309,8 +309,12 @@ func (m Model) renderHelp() string {
 	}
 	parts = append(parts,
 		helpKeyStyle.Render("[]")+helpStyle.Render(" log"),
-		helpKeyStyle.Render("q/esc")+helpStyle.Render(" quit"),
 	)
+	quitKeys := "q"
+	if m.filterText == "" {
+		quitKeys = "q/esc"
+	}
+	parts = append(parts, helpKeyStyle.Render(quitKeys)+helpStyle.Render(" quit"))
 
 	if m.status != "" {
 		parts = append(parts, statusStyle.Render(m.status))
