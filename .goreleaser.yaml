@@ -18,12 +18,11 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
-brews:
+homebrew_casks:
   - name: zsm
-    directory: Formula
     repository:
       owner: mdsakalu
       name: homebrew-tap
