@@ -207,6 +207,42 @@ func TestAttachKeysProduceExplicitRequests(t *testing.T) {
 	}
 }
 
+func TestEscapeQuitsOnlyWhenNoFilterIsActive(t *testing.T) {
+	t.Run("unfiltered normal view quits", func(t *testing.T) {
+		m := initialModel()
+		_, cmd := m.handleKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+		if cmd == nil {
+			t.Fatal("Escape returned no command, want tea.Quit")
+		}
+		msg := cmd()
+		if _, ok := msg.(tea.QuitMsg); !ok {
+			t.Fatalf("Escape command returned %T, want tea.QuitMsg", msg)
+		}
+	})
+
+	t.Run("active filter is cleared", func(t *testing.T) {
+		m := initialModel()
+		m.filterText = "demo"
+		updated, _ := m.handleKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+		got := updated.(Model)
+		if got.filterText != "" {
+			t.Fatalf("filterText = %q, want empty", got.filterText)
+		}
+	})
+}
+
+func TestEmptyListHighlightsRefreshKey(t *testing.T) {
+	m := initialModel()
+	got := m.renderList(5)
+
+	if plain := stripStyleCodes(got); plain != "  No sessions found. Press r to refresh." {
+		t.Fatalf("empty-list message = %q", plain)
+	}
+	if styledKey := helpKeyStyle.Render("r"); !strings.Contains(got, styledKey) {
+		t.Fatalf("refresh key is not highlighted in %q", got)
+	}
+}
+
 // stripStyleCodes removes ANSI escape sequences for test comparison.
 func stripStyleCodes(s string) string {
 	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)

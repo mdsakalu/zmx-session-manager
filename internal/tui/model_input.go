@@ -16,6 +16,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if isQuit(msg) {
 		return m, tea.Quit
 	}
+	if msg.Code == tea.KeyEscape && m.filterText == "" {
+		return m, tea.Quit
+	}
 
 	m.handleLogScroll(msg)
 

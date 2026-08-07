@@ -191,7 +191,9 @@ func (m *Model) renderList(maxRows int) string {
 		if m.filterText != "" {
 			return normalStyle.Render("  No matches. Esc to clear filter.")
 		}
-		return normalStyle.Render("  No sessions found. Press r to refresh.")
+		return normalStyle.Render("  No sessions found. Press ") +
+			helpKeyStyle.Render("r") +
+			normalStyle.Render(" to refresh.")
 	}
 
 	lw := m.listInnerWidth()
@@ -307,7 +309,7 @@ func (m Model) renderHelp() string {
 	}
 	parts = append(parts,
 		helpKeyStyle.Render("[]")+helpStyle.Render(" log"),
-		helpKeyStyle.Render("q")+helpStyle.Render(" quit"),
+		helpKeyStyle.Render("q/esc")+helpStyle.Render(" quit"),
 	)
 
 	if m.status != "" {

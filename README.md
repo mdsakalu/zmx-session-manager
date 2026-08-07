@@ -47,10 +47,10 @@ go install github.com/mdsakalu/zmx-session-manager@latest
 | `e` | Attach by replacing zsm (legacy behavior) |
 | `k` | Kill selected session(s) |
 | `c` | Copy attach command |
-| `s` | Cycle sort mode (name / clients / newest) |
+| `s` | Cycle sort mode (name / clients / PID / memory / uptime) |
 | `/` | Filter sessions |
 | `[` `]` | Scroll activity log |
-| `q` | Quit |
+| `q` `esc` | Quit |
 
 ## License
 
