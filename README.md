@@ -52,6 +52,10 @@ go install github.com/mdsakalu/zmx-session-manager@latest
 | `[` `]` | Scroll activity log |
 | `q` `esc` | Quit |
 
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who have contributed code, reports, testing, and feedback.
+
 ## License
 
 [MIT](LICENSE)
