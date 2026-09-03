@@ -64,6 +64,7 @@ nix develop github:mdsakalu/zmx-session-manager
 | `space` | Toggle selection |
 | `ctrl+a` | Select / deselect all |
 | `enter` | Attach to session, then return to zsm after detaching |
+| `n` | Create and attach to a new session |
 | `e` | Attach by replacing zsm (legacy behavior) |
 | `k` | Kill selected session(s) |
 | `c` | Copy attach command |

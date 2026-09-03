@@ -207,6 +207,116 @@ func TestAttachKeysProduceExplicitRequests(t *testing.T) {
 	}
 }
 
+func TestNewSessionUsesTypedName(t *testing.T) {
+	m := initialModel()
+	m.sessionNameBase = "project"
+
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	got := updated.(Model)
+	if got.state != stateNewSession {
+		t.Fatalf("state = %v, want stateNewSession", got.state)
+	}
+
+	updated, _ = got.Update(tea.KeyPressMsg(tea.Key{Code: 'd', Text: "demo"}))
+	got = updated.(Model)
+	updated, cmd := got.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	got = updated.(Model)
+
+	want := AttachRequest{Target: "demo", Mode: AttachAndReturn}
+	if got.AttachRequest() != want {
+		t.Fatalf("AttachRequest() = %+v, want %+v", got.AttachRequest(), want)
+	}
+	if cmd == nil {
+		t.Fatal("creating a session returned no quit command")
+	}
+}
+
+func TestNewSessionUsesUniqueDirectoryDefault(t *testing.T) {
+	m := initialModel()
+	m.sessionNameBase = "project"
+	m.sessions = []Session{{Name: "project"}, {Name: "project-2"}}
+	m.markSessionsChanged()
+
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: 'n', Text: "n"}))
+	got := updated.(Model)
+	if got.newSessionDefault != "project-3" {
+		t.Fatalf("newSessionDefault = %q, want %q", got.newSessionDefault, "project-3")
+	}
+
+	updated, _ = got.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	got = updated.(Model)
+	want := AttachRequest{Target: "project-3", Mode: AttachAndReturn}
+	if got.AttachRequest() != want {
+		t.Fatalf("AttachRequest() = %+v, want %+v", got.AttachRequest(), want)
+	}
+}
+
+func TestNewSessionAcceptsQAsInput(t *testing.T) {
+	m := initialModel()
+	m.state = stateNewSession
+	m.newSessionDefault = "session"
+
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatal("q in new-session input should not quit")
+	}
+	if got.newSessionName != "q" {
+		t.Fatalf("newSessionName = %q, want %q", got.newSessionName, "q")
+	}
+}
+
+func TestNewSessionRejectsExistingAndInvalidNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		sessions []Session
+	}{
+		{name: "existing", input: "demo", sessions: []Session{{Name: "demo"}}},
+		{name: "path separator", input: "team/demo"},
+		{name: "dot", input: "."},
+		{name: "dot dot", input: ".."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := initialModel()
+			m.state = stateNewSession
+			m.newSessionDefault = "session"
+			m.newSessionName = tt.input
+			m.sessions = tt.sessions
+
+			updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+			got := updated.(Model)
+			if cmd != nil {
+				t.Fatal("invalid name should not quit")
+			}
+			if got.state != stateNewSession {
+				t.Fatalf("state = %v, want stateNewSession", got.state)
+			}
+			if got.status == "" {
+				t.Fatal("invalid name should display a status message")
+			}
+		})
+	}
+}
+
+func TestNewSessionEscapeCancels(t *testing.T) {
+	m := initialModel()
+	m.state = stateNewSession
+	m.newSessionName = "demo"
+	m.status = "error"
+
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	got := updated.(Model)
+	if cmd != nil {
+		t.Fatal("Escape should cancel without quitting")
+	}
+	if got.state != stateNormal || got.newSessionName != "" || got.status != "" {
+		t.Fatalf("cancelled model = %+v", got)
+	}
+}
+
 func TestEscapeQuitsOnlyWhenNoFilterIsActive(t *testing.T) {
 	t.Run("unfiltered normal view quits", func(t *testing.T) {
 		m := initialModel()
@@ -235,8 +345,11 @@ func TestEmptyListHighlightsRefreshKey(t *testing.T) {
 	m := initialModel()
 	got := m.renderList(5)
 
-	if plain := stripStyleCodes(got); plain != "  No sessions found. Press r to refresh." {
+	if plain := stripStyleCodes(got); plain != "  No sessions found. Press n to create or r to refresh." {
 		t.Fatalf("empty-list message = %q", plain)
+	}
+	if styledKey := helpKeyStyle.Render("n"); !strings.Contains(got, styledKey) {
+		t.Fatalf("new-session key is not highlighted in %q", got)
 	}
 	if styledKey := helpKeyStyle.Render("r"); !strings.Contains(got, styledKey) {
 		t.Fatalf("refresh key is not highlighted in %q", got)

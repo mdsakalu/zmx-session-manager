@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -95,6 +96,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	default:
 		if msg.Text != "" {
 			switch msg.Text {
+			case "n":
+				m.state = stateNewSession
+				m.newSessionName = ""
+				m.newSessionDefault = m.availableSessionName(m.sessionNameBase)
+				m.status = ""
 			case "e":
 				if m.cursor < len(visible) {
 					m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachReplaceProcess}
@@ -138,6 +144,74 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m Model) handleNewSessionKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.Code == 'c' && msg.Mod.Contains(tea.ModCtrl) {
+		return m, tea.Quit
+	}
+
+	switch msg.Code {
+	case tea.KeyEscape:
+		m.state = stateNormal
+		m.newSessionName = ""
+		m.status = ""
+
+	case tea.KeyEnter:
+		name := strings.TrimSpace(m.newSessionName)
+		if name == "" {
+			name = m.newSessionDefault
+		}
+		if name == "." || name == ".." || strings.ContainsRune(name, '/') {
+			m.status = "Session name cannot be '.', '..', or contain '/'"
+			return m, nil
+		}
+		if m.hasSession(name) {
+			m.status = fmt.Sprintf("Session %q already exists", name)
+			return m, nil
+		}
+		m.attach = AttachRequest{Target: name, Mode: AttachAndReturn}
+		return m, tea.Quit
+
+	case tea.KeyBackspace:
+		runes := []rune(m.newSessionName)
+		if len(runes) > 0 {
+			m.newSessionName = string(runes[:len(runes)-1])
+		}
+		m.status = ""
+
+	default:
+		if msg.Text != "" {
+			m.newSessionName += msg.Text
+			m.status = ""
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) availableSessionName(base string) string {
+	if base == "" {
+		base = "session"
+	}
+	if !m.hasSession(base) {
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := fmt.Sprintf("%s-%d", base, suffix)
+		if !m.hasSession(candidate) {
+			return candidate
+		}
+	}
+}
+
+func (m Model) hasSession(name string) bool {
+	for _, session := range m.sessions {
+		if session.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) toggleSelectAll(visible []Session) {

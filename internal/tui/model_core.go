@@ -3,6 +3,8 @@ package tui
 import (
 	"cmp"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ const (
 	stateConfirmKill
 	stateKilling
 	stateFilter
+	stateNewSession
 )
 
 type sortMode int
@@ -169,6 +172,10 @@ type Model struct {
 	sortAsc    bool
 	attach     AttachRequest
 
+	newSessionName    string
+	newSessionDefault string
+	sessionNameBase   string
+
 	preview        string
 	previewScrollX int
 	state          state
@@ -206,13 +213,21 @@ func initialModel() Model {
 	return Model{
 		selected:          make(map[string]bool),
 		sortAsc:           true,
+		sessionNameBase:   "session",
 		visibleCacheDirty: true,
 		allMetricsDirty:   true,
 	}
 }
 
 func NewModel() Model {
-	return initialModel()
+	m := initialModel()
+	if cwd, err := os.Getwd(); err == nil {
+		base := filepath.Base(cwd)
+		if base != "" && base != "." && base != string(filepath.Separator) {
+			m.sessionNameBase = base
+		}
+	}
+	return m
 }
 
 func (m Model) AttachRequest() AttachRequest {
@@ -463,6 +478,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.state == stateFilter {
 			return m.handleFilterKey(msg)
+		}
+		if m.state == stateNewSession {
+			return m.handleNewSessionKey(msg)
 		}
 		return m.handleKey(msg)
 	}
