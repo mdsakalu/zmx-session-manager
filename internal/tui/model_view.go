@@ -192,6 +192,8 @@ func (m *Model) renderList(maxRows int) string {
 			return normalStyle.Render("  No matches. Esc to clear filter.")
 		}
 		return normalStyle.Render("  No sessions found. Press ") +
+			helpKeyStyle.Render("n") +
+			normalStyle.Render(" to create or ") +
 			helpKeyStyle.Render("r") +
 			normalStyle.Render(" to refresh.")
 	}
@@ -283,6 +285,18 @@ func (m Model) renderHelp() string {
 		return helpStyle.Render(" /") + helpKeyStyle.Render(m.filterText) + helpStyle.Render(cursor+"  Enter accept | Esc clear")
 	}
 
+	if m.state == stateNewSession {
+		name := helpKeyStyle.Render(m.newSessionName)
+		if m.newSessionName == "" {
+			name = logDimStyle.Render(m.newSessionDefault)
+		}
+		prompt := helpStyle.Render(" New session: ") + name + helpStyle.Render("█  Enter create | Esc cancel")
+		if m.status != "" {
+			prompt += "  " + confirmStyle.Render(m.status)
+		}
+		return prompt
+	}
+
 	if m.state == stateConfirmKill {
 		targets := m.killTargets()
 		if len(targets) == 1 {
@@ -297,6 +311,7 @@ func (m Model) renderHelp() string {
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),
 		helpKeyStyle.Render("enter") + helpStyle.Render(" attach"),
+		helpKeyStyle.Render("n") + helpStyle.Render(" new"),
 		helpKeyStyle.Render("e") + helpStyle.Render(" exec"),
 		helpKeyStyle.Render("k") + helpStyle.Render(" kill"),
 		helpKeyStyle.Render("c") + helpStyle.Render(" copy cmd"),

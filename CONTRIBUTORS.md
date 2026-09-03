@@ -15,8 +15,9 @@ zsm is maintained and improved by its community. Thank you to everyone who has c
 - [@ngildenhuys](https://github.com/ngildenhuys) — initial Nix flake implementation.
 - [@osamu2001](https://github.com/osamu2001) — Vim-style navigation contribution.
 
-## Bug reports and validation
+## Reports, ideas, and validation
 
+- [@david-haerer](https://github.com/david-haerer) — new-session workflow request and design feedback.
 - [@GladioFeng](https://github.com/GladioFeng) — terminal keyboard-state regression report.
 - [@injust](https://github.com/injust) — preview colour, refresh hint, Escape key, and zmx compatibility reports.
 - [@jmote](https://github.com/jmote) — current zmx compatibility report.
