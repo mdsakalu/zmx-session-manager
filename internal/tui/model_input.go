@@ -59,6 +59,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyLeft:
+		if m.previewWrap {
+			return m, nil
+		}
 		if m.previewScrollX > 0 {
 			m.previewScrollX -= 4
 			if m.previewScrollX < 0 {
@@ -67,6 +70,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyRight:
+		if m.previewWrap {
+			return m, nil
+		}
 		maxW := previewMaxWidth(m.preview)
 		limit := maxW - m.previewInnerWidth()
 		if limit < 0 {
@@ -99,6 +105,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	default:
 		if msg.Text != "" {
 			switch msg.Text {
+			case "w":
+				m.previewWrap = !m.previewWrap
+				m.previewScrollX = 0
 			case "n":
 				m.state = stateNewSession
 				m.newSessionName = ""

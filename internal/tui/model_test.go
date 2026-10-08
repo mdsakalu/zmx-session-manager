@@ -1,13 +1,104 @@
 package tui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
+
+func TestPreviewWrapsAtPaneWidth(t *testing.T) {
+	for _, width := range []int{80, 100, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m := initialModel()
+			m.width, m.height = width, 30
+			m.sessions = []Session{{Name: "demo"}}
+			m.preview = strings.Repeat("x", m.previewInnerWidth()) + "CONTINUATION"
+			content := m.View().Content
+			if !strings.Contains(content, "CONTINUATION") {
+				t.Fatal("long output was cropped instead of wrapping inside the preview")
+			}
+			for _, line := range strings.Split(content, "\n") {
+				if got := lipgloss.Width(line); got > width {
+					t.Fatalf("rendered line width %d exceeds terminal width %d", got, width)
+				}
+			}
+		})
+	}
+}
+
+func TestWrappedPreviewKeepsLatestRowsAndColors(t *testing.T) {
+	m := initialModel()
+	m.width, m.height = 80, 30
+	width := m.previewInnerWidth()
+	m.preview = "\x1b[31m" + strings.Repeat("x", width*2) + "LATEST\x1b[0m"
+	got := m.renderPreview(1)
+	if plain := strings.TrimSpace(ansi.Strip(got)); plain != "LATEST" {
+		t.Fatalf("last visible row = %q, want LATEST", plain)
+	}
+	if !strings.Contains(got, "\x1b[31m") || !strings.Contains(got, "\x1b[0m") {
+		t.Fatalf("cropping lost the active color or reset: %q", got)
+	}
+}
+
+func TestWrappedPreviewPreservesWideGraphemesAndIndentation(t *testing.T) {
+	m := initialModel()
+	m.width, m.height = 80, 30
+	width := m.previewInnerWidth()
+	m.preview = "  " + strings.Repeat("界", width) + "👩🏽 END"
+	got := ansi.Strip(m.renderPreview(10))
+	if strings.Count(got, "界") != width || !strings.Contains(got, "👩🏽") || !strings.HasPrefix(got, "  ") {
+		t.Fatalf("wrapping lost a character or indentation: %q", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if ansi.StringWidth(line) != width {
+			t.Fatalf("wrapped row does not fill the pane width: %q", line)
+		}
+	}
+}
+
+func TestPreviewWrapToggleRetainsHorizontalScrolling(t *testing.T) {
+	m := initialModel()
+	m.width, m.height = 80, 30
+	m.preview = "abcd" + strings.Repeat("x", m.previewInnerWidth())
+	updated, _ := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	m = updated.(Model)
+	if m.previewScrollX != 0 {
+		t.Fatal("horizontal offset changed while wrapping was enabled")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'w', Text: "w"}))
+	m = updated.(Model)
+	if m.previewWrap {
+		t.Fatal("w did not disable wrapping")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight}))
+	m = updated.(Model)
+	if m.previewScrollX != 4 || strings.Contains(m.renderPreview(5), "abcd") {
+		t.Fatal("unwrapped preview did not scroll horizontally")
+	}
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: 'w', Text: "w"}))
+	m = updated.(Model)
+	if !m.previewWrap || m.previewScrollX != 0 || !strings.Contains(m.renderPreview(5), "abcd") {
+		t.Fatal("reenabling wrapping did not restore the full line")
+	}
+}
+
+func TestWrappedPreviewReflowsAfterResize(t *testing.T) {
+	m := initialModel()
+	m.width, m.height = 100, 30
+	m.preview = strings.Repeat("x", 100)
+	before := m.renderPreview(10)
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	m = updated.(Model)
+	after := m.renderPreview(10)
+	if strings.Count(after, "\n") <= strings.Count(before, "\n") || strings.Count(after, "x") != 100 {
+		t.Fatalf("resize did not reflow the full output: before=%q after=%q", before, after)
+	}
+}
 
 func TestCurrentSessionPreviewDoesNotFetchItsOwnOutput(t *testing.T) {
 	t.Setenv("ZMX_SESSION", "current")

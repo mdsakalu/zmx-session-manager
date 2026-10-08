@@ -61,6 +61,8 @@ nix develop github:mdsakalu/zmx-session-manager
 | Key | Action |
 |-----|--------|
 | `↑` `↓` | Navigate sessions |
+| `w` | Toggle preview wrapping (on by default) |
+| `←` `→` | Scroll preview horizontally when wrapping is off |
 | `space` | Toggle selection |
 | `ctrl+a` | Select / deselect all |
 | `enter` | Attach to session, then return to zsm after detaching |
@@ -81,6 +83,9 @@ Existing sessions use their exact names, including any `ZMX_SESSION_PREFIX` alre
 present. New sessions created with `n` still receive the configured prefix; the
 default name and duplicate checks account for it. Copied attach commands also
 target the exact existing session, even in a shell with a prefix configured.
+
+Preview output wraps to the preview pane's width and shows the most recent rows.
+Press `w` to disable wrapping and use `←` / `→` to inspect long lines horizontally.
 
 ## Contributors
 
