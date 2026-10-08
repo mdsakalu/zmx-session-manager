@@ -23,6 +23,7 @@ func FetchPreview(name string, lines int) string {
 	defer cancel()
 
 	cmd := deps.commandContext(ctx, "zmx", "history", name, "--vt")
+	cmd.Env = ExistingSessionEnv()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Sprintf("(preview unavailable: %v)", err)

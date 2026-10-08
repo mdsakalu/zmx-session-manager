@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -89,7 +90,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyEnter:
 		if m.cursor < len(visible) {
-			m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachAndReturn}
+			if !visible[m.cursor].IsCurrent() {
+				m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachAndReturn}
+			}
 			return m, tea.Quit
 		}
 
@@ -103,7 +106,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.status = ""
 			case "e":
 				if m.cursor < len(visible) {
-					m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachReplaceProcess}
+					if !visible[m.cursor].IsCurrent() {
+						m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachReplaceProcess}
+					}
 					return m, tea.Quit
 				}
 			case "k":
@@ -114,7 +119,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			case "c":
 				if m.cursor < len(visible) {
 					name := visible[m.cursor].Name
-					text := fmt.Sprintf("zmx attach %s", name)
+					text := zmx.AttachCommand(name)
 					if err := zmx.CopyToClipboard(text); err != nil {
 						m.status = fmt.Sprintf("Copy failed: %v", err)
 						m.addLog(confirmStyle.Render(fmt.Sprintf("  ✗ Copy failed: %v", err)))
@@ -166,11 +171,11 @@ func (m Model) handleNewSessionKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.status = "Session name cannot be '.', '..', or contain '/'"
 			return m, nil
 		}
-		if m.hasSession(name) {
+		if m.hasSession(os.Getenv("ZMX_SESSION_PREFIX") + name) {
 			m.status = fmt.Sprintf("Session %q already exists", name)
 			return m, nil
 		}
-		m.attach = AttachRequest{Target: name, Mode: AttachAndReturn}
+		m.attach = AttachRequest{Target: name, Mode: AttachAndReturn, NewSession: true}
 		return m, tea.Quit
 
 	case tea.KeyBackspace:
@@ -194,12 +199,13 @@ func (m Model) availableSessionName(base string) string {
 	if base == "" {
 		base = "session"
 	}
-	if !m.hasSession(base) {
+	prefix := os.Getenv("ZMX_SESSION_PREFIX")
+	if !m.hasSession(prefix + base) {
 		return base
 	}
 	for suffix := 2; ; suffix++ {
 		candidate := fmt.Sprintf("%s-%d", base, suffix)
-		if !m.hasSession(candidate) {
+		if !m.hasSession(prefix + candidate) {
 			return candidate
 		}
 	}

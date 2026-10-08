@@ -9,6 +9,65 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+func TestCurrentSessionPreviewDoesNotFetchItsOwnOutput(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "current")
+	m := NewModel()
+	m.sessions = []Session{{Name: "current"}}
+	m.preview = "old preview"
+	if cmd := m.previewCmd(); cmd != nil {
+		t.Fatal("current session must not fetch a recursive preview")
+	}
+	if m.preview == "old preview" || m.preview == "" {
+		t.Fatalf("expected a current-session explanation, got %q", m.preview)
+	}
+	updated, _ := m.Update(previewMsg{name: "current", content: "recursive output"})
+	if updated.(Model).preview == "recursive output" {
+		t.Fatal("late preview result overwrote the current-session explanation")
+	}
+}
+
+func TestCurrentSessionKeysExitWithoutAttaching(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "env-current")
+	for _, session := range []Session{{Name: "env-current"}, {Name: "marked-current", Current: true}} {
+		for _, key := range []tea.Key{{Code: tea.KeyEnter}, {Code: 'e', Text: "e"}} {
+			m := NewModel()
+			m.sessions = []Session{session}
+			updated, cmd := m.Update(tea.KeyPressMsg(key))
+			if updated.(Model).AttachRequest() != (AttachRequest{}) || cmd == nil {
+				t.Fatalf("current session %q should quit without an attach request", session.Name)
+			}
+			if _, ok := cmd().(tea.QuitMsg); !ok {
+				t.Fatal("current-session selection must quit")
+			}
+		}
+	}
+}
+
+func TestChangingSessionClearsPreviousPreview(t *testing.T) {
+	m := initialModel()
+	m.sessions = []Session{{Name: "alpha"}, {Name: "beta"}}
+	m.preview = "alpha output"
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	if updated.(Model).preview != "" || cmd == nil {
+		t.Fatal("switching sessions must clear old output while loading the selected preview")
+	}
+}
+
+func TestNewSessionChecksPrefixedNames(t *testing.T) {
+	t.Setenv("ZMX_SESSION_PREFIX", "d.")
+	m := NewModel()
+	m.sessions = []Session{{Name: "d.project"}, {Name: "d.project-2"}}
+	if got := m.availableSessionName("project"); got != "project-3" {
+		t.Errorf("default name = %q, want project-3", got)
+	}
+	m.state = stateNewSession
+	m.newSessionName = "project"
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	if cmd != nil || updated.(Model).status == "" {
+		t.Fatal("new session accepted an existing prefixed name")
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	tests := []struct {
 		s      string
@@ -222,7 +281,7 @@ func TestNewSessionUsesTypedName(t *testing.T) {
 	updated, cmd := got.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	got = updated.(Model)
 
-	want := AttachRequest{Target: "demo", Mode: AttachAndReturn}
+	want := AttachRequest{Target: "demo", Mode: AttachAndReturn, NewSession: true}
 	if got.AttachRequest() != want {
 		t.Fatalf("AttachRequest() = %+v, want %+v", got.AttachRequest(), want)
 	}
@@ -245,7 +304,7 @@ func TestNewSessionUsesUniqueDirectoryDefault(t *testing.T) {
 
 	updated, _ = got.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	got = updated.(Model)
-	want := AttachRequest{Target: "project-3", Mode: AttachAndReturn}
+	want := AttachRequest{Target: "project-3", Mode: AttachAndReturn, NewSession: true}
 	if got.AttachRequest() != want {
 		t.Fatalf("AttachRequest() = %+v, want %+v", got.AttachRequest(), want)
 	}
