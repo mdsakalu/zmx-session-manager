@@ -28,7 +28,7 @@
             version = "unstable-${buildDate}";
             src = ./.;
 
-            vendorHash = "sha256-CE8atBJ7TJ6RI2uJDvPOwT4kRmyFEGC/vwOm7EoJL6U=";
+            vendorHash = "sha256-LhhdqaesnuqVZB8hOCZcpBfTQR+lbvQOg8eiHrgK+4U=";
 
             ldflags = [
               "-s"
