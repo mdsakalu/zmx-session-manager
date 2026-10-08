@@ -21,6 +21,28 @@ func previewMaxWidth(raw string) int {
 	return maxW
 }
 
+func (m *Model) renderPreview(height int) string {
+	width := m.previewInnerWidth()
+	if !m.previewWrap {
+		return clampLines(zmx.ScrollPreview(m.preview, m.previewScrollX, width), height)
+	}
+	if height <= 0 || width <= 0 {
+		return ""
+	}
+
+	// Keep indentation and grapheme clusters intact. Reapply active colors on
+	// every row so cropping to the newest visible rows does not lose their style.
+	var wrapped strings.Builder
+	writer := lipgloss.NewWrapWriter(&wrapped)
+	_, _ = writer.Write([]byte(ansi.Hardwrap(m.preview, width, true)))
+	_ = writer.Close()
+	lines := strings.Split(wrapped.String(), "\n")
+	if len(lines) > height {
+		lines = lines[len(lines)-height:]
+	}
+	return zmx.ScrollPreview(strings.Join(lines, "\n"), 0, width)
+}
+
 // Layout
 
 func (m Model) mainContentHeight(helpLines int) int {
@@ -122,8 +144,7 @@ func (m Model) View() tea.View {
 	}
 
 	// --- Preview pane ---
-	pw := m.previewInnerWidth()
-	previewContent := clampLines(zmx.ScrollPreview(m.preview, m.previewScrollX, pw), ch)
+	previewContent := m.renderPreview(ch)
 	previewTitleLeft := " Preview "
 	previewTitleRight := ""
 	if m.cursor < len(visible) {
@@ -305,8 +326,12 @@ func (m Model) renderHelp() string {
 		return confirmStyle.Render(fmt.Sprintf(" Kill %d sessions? y/n ", len(targets)))
 	}
 
+	previewHelp := helpKeyStyle.Render("w") + helpStyle.Render(" unwrap")
+	if !m.previewWrap {
+		previewHelp = helpKeyStyle.Render("w") + helpStyle.Render(" wrap  ") + helpKeyStyle.Render("←→") + helpStyle.Render(" scroll")
+	}
 	parts := []string{
-		helpKeyStyle.Render("←→") + helpStyle.Render(" scroll"),
+		previewHelp,
 		helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav"),
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),

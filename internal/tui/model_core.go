@@ -180,6 +180,7 @@ type Model struct {
 
 	preview        string
 	previewScrollX int
+	previewWrap    bool
 	state          state
 	status         string
 
@@ -215,6 +216,7 @@ func initialModel() Model {
 	return Model{
 		selected:          make(map[string]bool),
 		sortAsc:           true,
+		previewWrap:       true,
 		sessionNameBase:   "session",
 		visibleCacheDirty: true,
 		allMetricsDirty:   true,
