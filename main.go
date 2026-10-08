@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/mdsakalu/zmx-session-manager/internal/tui"
+	"github.com/mdsakalu/zmx-session-manager/internal/zmx"
 )
 
 var (
@@ -49,6 +50,9 @@ func runSessionManager(
 		if request.Target == "" || request.Mode == tui.AttachNone {
 			return nil
 		}
+		if !request.NewSession && request.Target == os.Getenv("ZMX_SESSION") {
+			return nil
+		}
 		if err := attach(request); err != nil {
 			return fmt.Errorf("attach to session %q: %w", request.Target, err)
 		}
@@ -71,9 +75,14 @@ func runTUI() (tui.AttachRequest, error) {
 }
 
 func attachToSession(zmxPath string, request tui.AttachRequest) error {
+	env := os.Environ()
+	if !request.NewSession {
+		env = zmx.ExistingSessionEnv()
+	}
 	switch request.Mode {
 	case tui.AttachAndReturn:
 		cmd := exec.Command(zmxPath, "attach", request.Target)
+		cmd.Env = env
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -85,7 +94,7 @@ func attachToSession(zmxPath string, request tui.AttachRequest) error {
 		}
 		return nil
 	case tui.AttachReplaceProcess:
-		return syscall.Exec(zmxPath, []string{"zmx", "attach", request.Target}, os.Environ())
+		return syscall.Exec(zmxPath, []string{"zmx", "attach", request.Target}, env)
 	default:
 		return fmt.Errorf("unsupported attach mode %d", request.Mode)
 	}

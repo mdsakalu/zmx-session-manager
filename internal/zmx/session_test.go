@@ -1,10 +1,46 @@
 package zmx
 
 import (
+	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestExistingSessionCommandsDoNotApplyPrefixAgain(t *testing.T) {
+	t.Setenv("ZMX_SESSION_PREFIX", "d.")
+	orig := deps
+	t.Cleanup(func() { deps = orig })
+	deps.command = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("sh", "-c", `test "${ZMX_SESSION_PREFIX}$1" = d.term`, "sh", args[1])
+	}
+	if err := KillSession("d.term"); err != nil {
+		t.Errorf("kill targeted the wrong session: %v", err)
+	}
+	deps.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", `printf '%s' "${ZMX_SESSION_PREFIX}$1"`, "sh", args[1])
+	}
+	if got := FetchPreview("d.term", 1); got != "d.term" {
+		t.Errorf("history targeted %q, want d.term", got)
+	}
+}
+
+func TestAttachCommandTargetsExactShellQuotedSession(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "zmx"), []byte("#!/bin/sh\nprintf '%s' \"${ZMX_SESSION_PREFIX}$2\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ZMX_SESSION_PREFIX", "d.")
+	for _, name := range []string{"d.term", "other term", "quote'$(echo bad);name"} {
+		out, err := exec.Command("sh", "-c", AttachCommand(name)).CombinedOutput()
+		if err != nil || string(out) != name {
+			t.Errorf("copy command for %q: output=%q err=%v", name, out, err)
+		}
+	}
+}
 
 func TestFormatBytes(t *testing.T) {
 	tests := []struct {
@@ -201,6 +237,9 @@ func TestFetchSessionsNewFormatCurrentSession(t *testing.T) {
 	}
 	if got[0].Name != "current" {
 		t.Errorf("Name = %q, want %q", got[0].Name, "current")
+	}
+	if !got[0].IsCurrent() {
+		t.Error("current-session marker was discarded")
 	}
 	if got[0].StartedIn != "/Users/example/current" {
 		t.Errorf("StartedIn = %q, want %q", got[0].StartedIn, "/Users/example/current")

@@ -54,6 +54,8 @@ const (
 type AttachRequest struct {
 	Target string
 	Mode   AttachMode
+	// NewSession targets are user input and still need zmx's configured prefix.
+	NewSession bool
 }
 
 func (s sortMode) label() string {
@@ -434,7 +436,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case previewMsg:
 		visible := m.visibleSessions()
-		if m.cursor < len(visible) && visible[m.cursor].Name == msg.name {
+		if m.cursor < len(visible) && visible[m.cursor].Name == msg.name && !visible[m.cursor].IsCurrent() {
 			m.preview = msg.content
 		}
 
@@ -504,8 +506,13 @@ func (m *Model) finishKill() tea.Cmd {
 }
 
 func (m *Model) previewCmd() tea.Cmd {
+	m.preview = ""
 	visible := m.visibleSessions()
 	if m.cursor >= len(visible) {
+		return nil
+	}
+	if visible[m.cursor].IsCurrent() {
+		m.preview = "(current session; preview hidden to avoid recursion)"
 		return nil
 	}
 	return fetchPreviewCmd(visible[m.cursor].Name, m.mainContentHeight(1))

@@ -74,6 +74,14 @@ nix develop github:mdsakalu/zmx-session-manager
 | `q` | Quit |
 | `esc` | Quit, or clear an active filter |
 
+When zsm runs inside a zmx session, selecting that same session exits the manager.
+Its preview is hidden to avoid recursively displaying the manager itself.
+
+Existing sessions use their exact names, including any `ZMX_SESSION_PREFIX` already
+present. New sessions created with `n` still receive the configured prefix; the
+default name and duplicate checks account for it. Copied attach commands also
+target the exact existing session, even in a shell with a prefix configured.
+
 ## Contributors
 
 See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the people who have contributed code, reports, testing, and feedback.
