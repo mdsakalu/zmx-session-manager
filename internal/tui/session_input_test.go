@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestSessionNameEditingAndPaste(t *testing.T) {
@@ -30,6 +31,22 @@ func TestSessionNameEditingAndPaste(t *testing.T) {
 	key(tea.KeyEnter, 0)
 	if m.attach.Target != "bcd" {
 		t.Fatalf("created name = %q, want bcd", m.attach.Target)
+	}
+}
+
+func TestLegacyPreviewIsLabeled(t *testing.T) {
+	m := initialModel()
+	m.width, m.height = 120, 24
+	m.sessions = []Session{{Name: "legacy"}}
+	next, _ := m.Update(previewMsg{name: "legacy", content: "old history", scrollback: true})
+	m = next.(Model)
+	if !strings.Contains(ansi.Strip(m.View().Content), "[scrollback]") {
+		t.Fatal("legacy preview is not labeled")
+	}
+	next, _ = m.Update(previewMsg{name: "legacy", content: "current screen"})
+	m = next.(Model)
+	if strings.Contains(ansi.Strip(m.View().Content), "[scrollback]") {
+		t.Fatal("scrollback label remains on a current-screen preview")
 	}
 }
 

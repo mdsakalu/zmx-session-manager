@@ -150,6 +150,9 @@ func (m Model) View() tea.View {
 	if m.cursor < len(visible) {
 		s := visible[m.cursor]
 		previewTitleLeft = fmt.Sprintf(" %s ", s.Name)
+		if m.previewScrollback {
+			previewTitleLeft = fmt.Sprintf(" [scrollback] %s ", s.Name)
+		}
 		previewTitleRight = fmt.Sprintf(" 📂 %s ", s.DisplayDir())
 	}
 	pow := m.previewOuterWidth()

@@ -54,7 +54,13 @@ nix develop github:mdsakalu/zmx-session-manager
 
 ## Requirements
 
-[zmx](https://github.com/neurosnap/zmx) 1.0.1 or newer must be installed and available in your `PATH` for current-screen previews. After upgrading zmx, recreate older sessions to enable screen capture in their daemons. zsm retains compatibility with the legacy `session_name`/`started_in` list format.
+[zmx](https://github.com/neurosnap/zmx) must be installed and available in your `PATH`. Current-screen previews use zmx 1.0.1 or newer. Older installations retain scrollback previews, labeled `[scrollback]` in the preview title. zsm retains compatibility with the legacy `session_name`/`started_in` list format.
+
+After upgrading zmx, older session daemons may not support screen capture. zsm
+falls back to scrollback when the daemon reports that limitation. The zmx client
+must still be compatible with the session daemon: for example, zmx 1.0.1 cannot
+retrieve history from a 0.7.1 daemon. Those sessions need a matching older zmx
+client or must be recreated with the new version.
 
 ## Key Bindings
 

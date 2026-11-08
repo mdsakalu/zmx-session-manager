@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -40,8 +41,38 @@ func TestPreviewAfterRealScreenClear(t *testing.T) {
 	if history := run("history", "preview-test", "--vt"); !strings.Contains(history, "CLEARED_MARKER") {
 		t.Fatalf("test setup did not preserve scrollback: %q", history)
 	}
-	preview := FetchPreview("preview-test", 20)
+	result := FetchPreview("preview-test", 20)
+	if result.Scrollback {
+		t.Fatal("modern session unexpectedly used scrollback")
+	}
+	preview := result.Content
 	if !strings.Contains(preview, "SCREEN_MARKER") || strings.Contains(preview, "CLEARED_MARKER") || strings.Contains(preview, "old-row") {
 		t.Fatalf("preview after clear = %q", preview)
+	}
+}
+
+func TestPreviewWithRealLegacyClient(t *testing.T) {
+	legacy := os.Getenv("ZSM_TEST_LEGACY_ZMX")
+	if legacy == "" {
+		t.Skip("set ZSM_TEST_LEGACY_ZMX to a zmx 0.7.1 executable")
+	}
+	dir, err := os.MkdirTemp("/tmp", "zsm-legacy-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	t.Setenv("ZMX_DIR", dir)
+	t.Setenv("ZMX_SESSION_PREFIX", "")
+	t.Setenv("ZMX_SESSION", "")
+	t.Setenv("PATH", filepath.Dir(legacy)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Cleanup(func() { _ = exec.Command(legacy, "kill", "legacy-test").Run() })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if out, err := exec.CommandContext(ctx, legacy, "run", "legacy-test", "echo", "LEGACY_MARKER").CombinedOutput(); err != nil {
+		t.Fatalf("create legacy session: %v: %s", err, out)
+	}
+	preview := FetchPreview("legacy-test", 20)
+	if !preview.Scrollback || !strings.Contains(preview.Content, "LEGACY_MARKER") {
+		t.Fatalf("legacy preview = %+v", preview)
 	}
 }

@@ -11,6 +11,9 @@ func TestFetchPreviewUsesCurrentScreen(t *testing.T) {
 	orig := deps
 	t.Cleanup(func() { deps = orig })
 	deps.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if args[0] == "help" {
+			return exec.CommandContext(ctx, "echo", "--screen")
+		}
 		// Model zmx's observable output: scrollback contains cleared text;
 		// screen capture contains only current rows and unused blank rows.
 		return exec.CommandContext(ctx, "sh", "-c", `
@@ -19,7 +22,7 @@ case " $* " in
   *) printf 'cleared history\ncurrent\n' ;;
 esac`, "sh", strings.Join(args, " "))
 	}
-	if got := FetchPreview("test", 2); got != "\x1b[32mcurrent\x1b[0m" {
+	if got := FetchPreview("test", 2).Content; got != "\x1b[32mcurrent\x1b[0m" {
 		t.Fatalf("preview = %q, want current screen without cleared history or trailing blank rows", got)
 	}
 }
@@ -28,6 +31,38 @@ func TestScreenPreviewPreservesInteriorBlankRows(t *testing.T) {
 	got, err := tailLinesFromReader(strings.NewReader("old\n\ncurrent\n\n\n"), 2)
 	if err != nil || got != "\ncurrent" {
 		t.Fatalf("screen tail = %q, %v", got, err)
+	}
+}
+
+func TestPreviewCompatibility(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		help           string
+		screenError    string
+		wantScrollback bool
+		wantContent    string
+	}{
+		{"old client", "history --vt", "", true, "legacy output"},
+		{"old daemon", "history --screen", "daemon too old?", true, "legacy output"},
+		{"missing session", "history --screen", "session does not exist", false, "(preview unavailable:"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			orig := deps
+			t.Cleanup(func() { deps = orig })
+			deps.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+				if args[0] == "help" {
+					return exec.CommandContext(ctx, "echo", tt.help)
+				}
+				if strings.Contains(strings.Join(args, " "), "--screen") {
+					return exec.CommandContext(ctx, "sh", "-c", `echo "$1" >&2; exit 1`, "sh", tt.screenError)
+				}
+				return exec.CommandContext(ctx, "echo", "legacy output")
+			}
+			got := FetchPreview("test", 10)
+			if got.Scrollback != tt.wantScrollback || !strings.Contains(got.Content, tt.wantContent) {
+				t.Fatalf("preview = %+v", got)
+			}
+		})
 	}
 }
 
