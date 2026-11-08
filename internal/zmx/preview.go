@@ -2,6 +2,7 @@ package zmx
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -11,10 +12,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// FetchPreview returns the last `lines` lines of `zmx history <name> --vt`,
-// with all ANSI escape sequences stripped (except colors). Lines are NOT
-// truncated so that the caller can apply horizontal scrolling before display.
-func FetchPreview(name string, lines int) string {
+type Preview struct {
+	Content    string
+	Scrollback bool
+}
+
+// FetchPreview prefers current-screen capture, falling back to labeled scrollback
+// for older clients or daemons. Colors and full line widths are preserved.
+func FetchPreview(name string, lines int) Preview {
 	if lines < 1 {
 		lines = 1
 	}
@@ -22,29 +27,54 @@ func FetchPreview(name string, lines int) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	cmd := deps.commandContext(ctx, "zmx", "history", name, "--vt")
+	// Older clients silently ignore unknown flags, so detect CLI support first.
+	help := deps.commandContext(ctx, "zmx", "help")
+	help.Env = ExistingSessionEnv()
+	output, err := help.Output()
+	if err != nil {
+		return Preview{Content: fmt.Sprintf("(preview unavailable: %v)", err)}
+	}
+	screen := bytes.Contains(output, []byte("--screen"))
+	content, unsupported := fetchPreview(ctx, name, lines, screen)
+	if screen && unsupported {
+		screen = false
+		content, _ = fetchPreview(ctx, name, lines, false)
+	}
+	return Preview{Content: content, Scrollback: !screen}
+}
+
+func fetchPreview(ctx context.Context, name string, lines int, screen bool) (string, bool) {
+	args := []string{"history", name, "--vt"}
+	if screen {
+		args = append(args, "--screen")
+	}
+	cmd := deps.commandContext(ctx, "zmx", args...)
 	cmd.Env = ExistingSessionEnv()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Sprintf("(preview unavailable: %v)", err)
+		return fmt.Sprintf("(preview unavailable: %v)", err), false
 	}
-	cmd.Stderr = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return fmt.Sprintf("(preview unavailable: %v)", err)
+		return fmt.Sprintf("(preview unavailable: %v)", err), false
 	}
 
 	preview, readErr := tailLinesFromReader(stdout, lines)
 	waitErr := cmd.Wait()
 	if ctx.Err() == context.DeadlineExceeded {
-		return "(preview unavailable: timed out)"
+		return "(preview unavailable: timed out)", false
 	}
 	if readErr != nil {
-		return fmt.Sprintf("(preview unavailable: %v)", readErr)
+		return fmt.Sprintf("(preview unavailable: %v)", readErr), false
 	}
 	if waitErr != nil {
-		return fmt.Sprintf("(preview unavailable: %v)", waitErr)
+		if strings.Contains(stderr.String(), "CaptureNotSupported") || strings.Contains(stderr.String(), "daemon too old") {
+			return "", true
+		}
+		return fmt.Sprintf("(preview unavailable: %v)", waitErr), false
 	}
-	return preview
+	return preview, false
 }
 
 func tailLinesFromReader(r io.Reader, lines int) (string, error) {
@@ -52,10 +82,20 @@ func tailLinesFromReader(r io.Reader, lines int) (string, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
 	tail := make([]string, 0, lines)
+	blankRows := 0
 	for scanner.Scan() {
-		tail = append(tail, stripANSI(scanner.Text()))
+		line := stripANSI(scanner.Text())
+		if strings.TrimSpace(ansi.Strip(line)) == "" {
+			blankRows++
+			continue
+		}
+		for i := 0; i < min(blankRows, lines); i++ {
+			tail = append(tail, "")
+		}
+		blankRows = 0
+		tail = append(tail, line)
 		if len(tail) > lines {
-			tail = tail[1:]
+			tail = tail[len(tail)-lines:]
 		}
 	}
 	if err := scanner.Err(); err != nil {

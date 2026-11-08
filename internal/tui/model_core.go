@@ -84,8 +84,9 @@ type sessionsMsg struct {
 type Session = zmx.Session
 
 type previewMsg struct {
-	name    string
-	content string
+	name       string
+	content    string
+	scrollback bool
 }
 
 type statusClearMsg struct{}
@@ -121,7 +122,8 @@ func fetchProcessInfoCmd(sessions []Session) tea.Cmd {
 
 func fetchPreviewCmd(name string, lines int) tea.Cmd {
 	return func() tea.Msg {
-		return previewMsg{name: name, content: zmx.FetchPreview(name, lines)}
+		preview := zmx.FetchPreview(name, lines)
+		return previewMsg{name: name, content: preview.Content, scrollback: preview.Scrollback}
 	}
 }
 
@@ -175,14 +177,16 @@ type Model struct {
 	attach     AttachRequest
 
 	newSessionName    string
+	newSessionCursor  int
 	newSessionDefault string
 	sessionNameBase   string
 
-	preview        string
-	previewScrollX int
-	previewWrap    bool
-	state          state
-	status         string
+	preview           string
+	previewScrollback bool
+	previewScrollX    int
+	previewWrap       bool
+	state             state
+	status            string
 
 	// Kill tracking
 	killQueue     []string
@@ -440,6 +444,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		visible := m.visibleSessions()
 		if m.cursor < len(visible) && visible[m.cursor].Name == msg.name && !visible[m.cursor].IsCurrent() {
 			m.preview = msg.content
+			m.previewScrollback = msg.scrollback
 		}
 
 	case killOneResultMsg:
@@ -471,6 +476,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusClearMsg:
 		m.status = ""
+
+	case tea.PasteMsg:
+		if m.state == stateNewSession {
+			m.insertSessionText(msg.Content)
+		}
 
 	case tea.KeyPressMsg:
 		if m.state == stateKilling {
@@ -509,6 +519,7 @@ func (m *Model) finishKill() tea.Cmd {
 
 func (m *Model) previewCmd() tea.Cmd {
 	m.preview = ""
+	m.previewScrollback = false
 	visible := m.visibleSessions()
 	if m.cursor >= len(visible) {
 		return nil

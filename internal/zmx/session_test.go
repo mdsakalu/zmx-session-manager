@@ -20,9 +20,12 @@ func TestExistingSessionCommandsDoNotApplyPrefixAgain(t *testing.T) {
 		t.Errorf("kill targeted the wrong session: %v", err)
 	}
 	deps.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if args[0] == "help" {
+			return exec.CommandContext(ctx, "echo", "--screen")
+		}
 		return exec.CommandContext(ctx, "sh", "-c", `printf '%s' "${ZMX_SESSION_PREFIX}$1"`, "sh", args[1])
 	}
-	if got := FetchPreview("d.term", 1); got != "d.term" {
+	if got := FetchPreview("d.term", 1).Content; got != "d.term" {
 		t.Errorf("history targeted %q, want d.term", got)
 	}
 }

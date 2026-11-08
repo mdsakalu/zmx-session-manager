@@ -150,6 +150,9 @@ func (m Model) View() tea.View {
 	if m.cursor < len(visible) {
 		s := visible[m.cursor]
 		previewTitleLeft = fmt.Sprintf(" %s ", s.Name)
+		if m.previewScrollback {
+			previewTitleLeft = fmt.Sprintf(" [scrollback] %s ", s.Name)
+		}
 		previewTitleRight = fmt.Sprintf(" 📂 %s ", s.DisplayDir())
 	}
 	pow := m.previewOuterWidth()
@@ -179,6 +182,15 @@ func (m Model) View() tea.View {
 	full := lipgloss.JoinVertical(lipgloss.Left, body, logPane, help)
 	v := tea.NewView(clampLines(full, m.height))
 	v.AltScreen = true
+	if m.state == stateNewSession && m.height > 0 {
+		_, x := m.sessionInputView()
+		v.Cursor = &tea.Cursor{
+			Position: tea.Position{X: x, Y: min(m.height-1, lipgloss.Height(body)+lipgloss.Height(logPane))},
+			// Bubble Tea encodes Shape -1 with Blink false as DECSCUSR 0,
+			// which uses the terminal's configured default cursor style.
+			Shape: tea.CursorShape(-1),
+		}
+	}
 	return v
 }
 
@@ -307,15 +319,12 @@ func (m Model) renderHelp() string {
 	}
 
 	if m.state == stateNewSession {
-		name := helpKeyStyle.Render(m.newSessionName)
-		if m.newSessionName == "" {
-			name = logDimStyle.Render(m.newSessionDefault)
-		}
-		prompt := helpStyle.Render(" New session: ") + name + helpStyle.Render("█  Enter create | Esc cancel")
+		prompt, _ := m.sessionInputView()
+		prompt += helpStyle.Render("  Enter create | Esc cancel")
 		if m.status != "" {
 			prompt += "  " + confirmStyle.Render(m.status)
 		}
-		return prompt
+		return ansi.Truncate(prompt, max(1, m.width), "")
 	}
 
 	if m.state == stateConfirmKill {
