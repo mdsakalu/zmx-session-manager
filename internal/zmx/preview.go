@@ -2,6 +2,7 @@ package zmx
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -11,7 +12,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// FetchPreview returns the last `lines` lines of `zmx history <name> --vt`,
+// FetchPreview returns the last `lines` non-trailing-blank screen rows of
+// `zmx history <name> --vt --screen`,
 // with all ANSI escape sequences stripped (except colors). Lines are NOT
 // truncated so that the caller can apply horizontal scrolling before display.
 func FetchPreview(name string, lines int) string {
@@ -22,13 +24,14 @@ func FetchPreview(name string, lines int) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	cmd := deps.commandContext(ctx, "zmx", "history", name, "--vt")
+	cmd := deps.commandContext(ctx, "zmx", "history", name, "--vt", "--screen")
 	cmd.Env = ExistingSessionEnv()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Sprintf("(preview unavailable: %v)", err)
 	}
-	cmd.Stderr = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Sprintf("(preview unavailable: %v)", err)
 	}
@@ -42,6 +45,9 @@ func FetchPreview(name string, lines int) string {
 		return fmt.Sprintf("(preview unavailable: %v)", readErr)
 	}
 	if waitErr != nil {
+		if strings.Contains(stderr.String(), "CaptureNotSupported") || strings.Contains(stderr.String(), "daemon too old") {
+			return "(screen preview unavailable: recreate this session with zmx 1.0.1 or newer)"
+		}
 		return fmt.Sprintf("(preview unavailable: %v)", waitErr)
 	}
 	return preview
@@ -52,10 +58,20 @@ func tailLinesFromReader(r io.Reader, lines int) (string, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 
 	tail := make([]string, 0, lines)
+	blankRows := 0
 	for scanner.Scan() {
-		tail = append(tail, stripANSI(scanner.Text()))
+		line := stripANSI(scanner.Text())
+		if strings.TrimSpace(ansi.Strip(line)) == "" {
+			blankRows++
+			continue
+		}
+		for i := 0; i < min(blankRows, lines); i++ {
+			tail = append(tail, "")
+		}
+		blankRows = 0
+		tail = append(tail, line)
 		if len(tail) > lines {
-			tail = tail[1:]
+			tail = tail[len(tail)-lines:]
 		}
 	}
 	if err := scanner.Err(); err != nil {

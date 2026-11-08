@@ -1,9 +1,35 @@
 package zmx
 
 import (
+	"context"
+	"os/exec"
 	"strings"
 	"testing"
 )
+
+func TestFetchPreviewUsesCurrentScreen(t *testing.T) {
+	orig := deps
+	t.Cleanup(func() { deps = orig })
+	deps.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		// Model zmx's observable output: scrollback contains cleared text;
+		// screen capture contains only current rows and unused blank rows.
+		return exec.CommandContext(ctx, "sh", "-c", `
+case " $* " in
+  *" --screen "*) printf '\033[32mcurrent\033[0m\n\n\n\n' ;;
+  *) printf 'cleared history\ncurrent\n' ;;
+esac`, "sh", strings.Join(args, " "))
+	}
+	if got := FetchPreview("test", 2); got != "\x1b[32mcurrent\x1b[0m" {
+		t.Fatalf("preview = %q, want current screen without cleared history or trailing blank rows", got)
+	}
+}
+
+func TestScreenPreviewPreservesInteriorBlankRows(t *testing.T) {
+	got, err := tailLinesFromReader(strings.NewReader("old\n\ncurrent\n\n\n"), 2)
+	if err != nil || got != "\ncurrent" {
+		t.Fatalf("screen tail = %q, %v", got, err)
+	}
+}
 
 func TestStripANSI(t *testing.T) {
 	tests := []struct {

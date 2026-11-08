@@ -54,7 +54,7 @@ nix develop github:mdsakalu/zmx-session-manager
 
 ## Requirements
 
-[zmx](https://github.com/neurosnap/zmx) must be installed and available in your `PATH`. zsm is tested with zmx 0.7.0 and retains compatibility with the legacy `session_name`/`started_in` list format.
+[zmx](https://github.com/neurosnap/zmx) 1.0.1 or newer must be installed and available in your `PATH` for current-screen previews. After upgrading zmx, recreate older sessions to enable screen capture in their daemons. zsm retains compatibility with the legacy `session_name`/`started_in` list format.
 
 ## Key Bindings
 
@@ -84,7 +84,15 @@ present. New sessions created with `n` still receive the configured prefix; the
 default name and duplicate checks account for it. Copied attach commands also
 target the exact existing session, even in a shell with a prefix configured.
 
-Preview output wraps to the preview pane's width and shows the most recent rows.
+The new-session name field supports arrow keys, Home/End (Ctrl+A/E), Delete,
+Backspace, and terminal paste. Ctrl+U or Ctrl/Cmd+Backspace clears the field;
+Ctrl+W or Alt+Backspace deletes the previous word, and Ctrl+K deletes to the end.
+Modified shortcuts depend on the terminal forwarding distinct key sequences;
+Ctrl+U works when the terminal maps modified Backspace to ordinary Backspace.
+The insertion point uses the terminal's default cursor style.
+
+Preview output shows the current screen, excluding cleared scrollback and unused
+trailing blank rows. It wraps to the preview pane's width and shows the most recent rows.
 Press `w` to disable wrapping and use `←` / `→` to inspect long lines horizontally.
 
 ## Contributors

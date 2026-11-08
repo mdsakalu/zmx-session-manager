@@ -175,6 +175,7 @@ type Model struct {
 	attach     AttachRequest
 
 	newSessionName    string
+	newSessionCursor  int
 	newSessionDefault string
 	sessionNameBase   string
 
@@ -471,6 +472,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusClearMsg:
 		m.status = ""
+
+	case tea.PasteMsg:
+		if m.state == stateNewSession {
+			m.insertSessionText(msg.Content)
+		}
 
 	case tea.KeyPressMsg:
 		if m.state == stateKilling {

@@ -111,6 +111,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			case "n":
 				m.state = stateNewSession
 				m.newSessionName = ""
+				m.newSessionCursor = 0
 				m.newSessionDefault = m.availableSessionName(m.sessionNameBase)
 				m.status = ""
 			case "e":
@@ -187,18 +188,8 @@ func (m Model) handleNewSessionKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.attach = AttachRequest{Target: name, Mode: AttachAndReturn, NewSession: true}
 		return m, tea.Quit
 
-	case tea.KeyBackspace:
-		runes := []rune(m.newSessionName)
-		if len(runes) > 0 {
-			m.newSessionName = string(runes[:len(runes)-1])
-		}
-		m.status = ""
-
 	default:
-		if msg.Text != "" {
-			m.newSessionName += msg.Text
-			m.status = ""
-		}
+		m.editSessionName(msg)
 	}
 
 	return m, nil
