@@ -76,7 +76,7 @@ func TestRunSessionManagerExitsWhenAttachingCurrentSession(t *testing.T) {
 	t.Setenv("ZMX_SESSION", "d.current")
 	for _, mode := range []tui.AttachMode{tui.AttachAndReturn, tui.AttachReplaceProcess} {
 		calls := 0
-		err := runSessionManager(func() (tui.AttachRequest, error) {
+		err := runSessionManager(func(string) (tui.AttachRequest, error) {
 			calls++
 			if calls > 1 {
 				return tui.AttachRequest{}, nil
@@ -98,7 +98,14 @@ func TestRunSessionManagerReturnsToUIAfterDetach(t *testing.T) {
 		{},
 	}
 	uiCalls := 0
-	runUI := func() (tui.AttachRequest, error) {
+	runUI := func(selectedSession string) (tui.AttachRequest, error) {
+		wantSelection := ""
+		if uiCalls > 0 {
+			wantSelection = "demo"
+		}
+		if selectedSession != wantSelection {
+			t.Errorf("picker selected %q, want %q", selectedSession, wantSelection)
+		}
 		request := requests[uiCalls]
 		uiCalls++
 		return request, nil
@@ -118,5 +125,32 @@ func TestRunSessionManagerReturnsToUIAfterDetach(t *testing.T) {
 	}
 	if len(attached) != 1 || attached[0] != requests[0] {
 		t.Fatalf("attach requests = %+v, want %+v", attached, requests[:1])
+	}
+}
+
+func TestRunSessionManagerRemembersLatestSessionByExactName(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "")
+	t.Setenv("ZMX_SESSION_PREFIX", "d.")
+	requests := []tui.AttachRequest{
+		{Target: "other.existing", Mode: tui.AttachAndReturn},
+		{Target: "new", Mode: tui.AttachAndReturn, NewSession: true},
+		{Target: "d.existing", Mode: tui.AttachAndReturn},
+		{},
+	}
+	wantSelections := []string{"", "other.existing", "d.new", "d.existing"}
+	calls := 0
+	err := runSessionManager(func(selectedSession string) (tui.AttachRequest, error) {
+		if calls >= len(requests) {
+			t.Fatal("unexpected picker invocation")
+		}
+		if selectedSession != wantSelections[calls] {
+			t.Errorf("picker %d selected %q, want %q", calls, selectedSession, wantSelections[calls])
+		}
+		request := requests[calls]
+		calls++
+		return request, nil
+	}, func(tui.AttachRequest) error { return nil })
+	if err != nil || calls != len(requests) {
+		t.Fatalf("runSessionManager: calls=%d err=%v", calls, err)
 	}
 }

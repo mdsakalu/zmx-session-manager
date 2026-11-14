@@ -31,6 +31,74 @@ func TestPreviewWrapsAtPaneWidth(t *testing.T) {
 	}
 }
 
+func TestReturningPickerRestoresSessionAfterListAndWindowSize(t *testing.T) {
+	for _, sizeFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sizeFirst=%t", sizeFirst), func(t *testing.T) {
+			m := NewModel("session-39")
+			sessions := make([]Session, 40)
+			for i := range sessions {
+				sessions[i].Name = fmt.Sprintf("session-%02d", 39-i)
+			}
+			messages := []tea.Msg{sessionsMsg{sessions: sessions}, tea.WindowSizeMsg{Width: 80, Height: 20}}
+			if sizeFirst {
+				messages[0], messages[1] = messages[1], messages[0]
+			}
+			for _, message := range messages {
+				updated, _ := m.Update(message)
+				m = updated.(Model)
+			}
+			visible := m.visibleSessions()
+			if visible[m.cursor].Name != "session-39" {
+				t.Fatalf("focused session = %q, want session-39", visible[m.cursor].Name)
+			}
+			height := m.mainContentHeight(strings.Count(m.renderHelp(), "\n") + 1)
+			if m.cursor < m.listOffset || m.cursor >= m.listOffset+height {
+				t.Fatalf("focused row %d is outside visible range starting at %d with height %d", m.cursor, m.listOffset, height)
+			}
+			updated, _ := m.Update(previewMsg{name: "session-39", content: "restored preview"})
+			m = updated.(Model)
+			if m.preview != "restored preview" {
+				t.Fatal("restored session's preview was rejected")
+			}
+			updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+			if got := updated.(Model).AttachRequest().Target; got != "session-39" {
+				t.Fatalf("reattach target = %q, want session-39", got)
+			}
+		})
+	}
+}
+
+func TestReturningPickerRestoresSelectionOnlyOnce(t *testing.T) {
+	m := NewModel("beta")
+	sessions := []Session{{Name: "zeta"}, {Name: "beta"}, {Name: "alpha"}}
+	updated, _ := m.Update(sessionsMsg{sessions: sessions})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	m = updated.(Model)
+	updated, _ = m.Update(sessionsMsg{sessions: sessions})
+	m = updated.(Model)
+	if got := m.visibleSessions()[m.cursor].Name; got != "zeta" {
+		t.Fatalf("refresh reset selection to %q, want zeta", got)
+	}
+}
+
+func TestReturningPickerHandlesMissingSession(t *testing.T) {
+	for _, sessions := range [][]Session{nil, {{Name: "remaining"}}} {
+		m := NewModel("removed")
+		updated, _ := m.Update(sessionsMsg{sessions: sessions})
+		m = updated.(Model)
+		updated, _ = m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+		m = updated.(Model)
+		want := ""
+		if len(sessions) > 0 {
+			want = "remaining"
+		}
+		if got := m.AttachRequest().Target; got != want {
+			t.Fatalf("missing session fallback = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestWrappedPreviewKeepsLatestRowsAndColors(t *testing.T) {
 	m := initialModel()
 	m.width, m.height = 80, 30
@@ -102,7 +170,7 @@ func TestWrappedPreviewReflowsAfterResize(t *testing.T) {
 
 func TestCurrentSessionPreviewDoesNotFetchItsOwnOutput(t *testing.T) {
 	t.Setenv("ZMX_SESSION", "current")
-	m := NewModel()
+	m := NewModel("")
 	m.sessions = []Session{{Name: "current"}}
 	m.preview = "old preview"
 	if cmd := m.previewCmd(); cmd != nil {
@@ -121,7 +189,7 @@ func TestCurrentSessionKeysExitWithoutAttaching(t *testing.T) {
 	t.Setenv("ZMX_SESSION", "env-current")
 	for _, session := range []Session{{Name: "env-current"}, {Name: "marked-current", Current: true}} {
 		for _, key := range []tea.Key{{Code: tea.KeyEnter}, {Code: 'e', Text: "e"}} {
-			m := NewModel()
+			m := NewModel("")
 			m.sessions = []Session{session}
 			updated, cmd := m.Update(tea.KeyPressMsg(key))
 			if updated.(Model).AttachRequest() != (AttachRequest{}) || cmd == nil {
@@ -146,7 +214,7 @@ func TestChangingSessionClearsPreviousPreview(t *testing.T) {
 
 func TestNewSessionChecksPrefixedNames(t *testing.T) {
 	t.Setenv("ZMX_SESSION_PREFIX", "d.")
-	m := NewModel()
+	m := NewModel("")
 	m.sessions = []Session{{Name: "d.project"}, {Name: "d.project-2"}}
 	if got := m.availableSessionName("project"); got != "project-3" {
 		t.Errorf("default name = %q, want project-3", got)
