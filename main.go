@@ -39,11 +39,12 @@ func main() {
 }
 
 func runSessionManager(
-	runUI func() (tui.AttachRequest, error),
+	runUI func(string) (tui.AttachRequest, error),
 	attach func(tui.AttachRequest) error,
 ) error {
+	selectedSession := ""
 	for {
-		request, err := runUI()
+		request, err := runUI(selectedSession)
 		if err != nil {
 			return fmt.Errorf("run TUI: %w", err)
 		}
@@ -59,11 +60,15 @@ func runSessionManager(
 		if request.Mode == tui.AttachReplaceProcess {
 			return fmt.Errorf("replace attach for session %q returned unexpectedly", request.Target)
 		}
+		selectedSession = request.Target
+		if request.NewSession {
+			selectedSession = os.Getenv("ZMX_SESSION_PREFIX") + selectedSession
+		}
 	}
 }
 
-func runTUI() (tui.AttachRequest, error) {
-	finalModel, err := tea.NewProgram(tui.NewModel()).Run()
+func runTUI(selectedSession string) (tui.AttachRequest, error) {
+	finalModel, err := tea.NewProgram(tui.NewModel(selectedSession)).Run()
 	if err != nil {
 		return tui.AttachRequest{}, err
 	}

@@ -85,6 +85,9 @@ client or must be recreated with the new version.
 When zsm runs inside a zmx session, selecting that same session exits the manager.
 Its preview is hidden to avoid recursively displaying the manager itself.
 
+After detaching, the picker keeps the session you just left focused and visible.
+If that session has ended, the picker selects the first remaining session.
+
 Existing sessions use their exact names, including any `ZMX_SESSION_PREFIX` already
 present. New sessions created with `n` still receive the configured prefix; the
 default name and duplicate checks account for it. Copied attach commands also

@@ -166,10 +166,11 @@ func clearStatusAfter(d time.Duration) tea.Cmd {
 // Model
 
 type Model struct {
-	sessions   []Session
-	cursor     int
-	listOffset int
-	selected   map[string]bool
+	sessions       []Session
+	cursor         int
+	listOffset     int
+	selected       map[string]bool
+	initialSession string
 
 	filterText string
 	sortMode   sortMode
@@ -227,8 +228,9 @@ func initialModel() Model {
 	}
 }
 
-func NewModel() Model {
+func NewModel(selectedSession string) Model {
 	m := initialModel()
+	m.initialSession = selectedSession
 	if cwd, err := os.Getwd(); err == nil {
 		base := filepath.Base(cwd)
 		if base != "" && base != "." && base != string(filepath.Separator) {
@@ -396,6 +398,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureVisible()
 		visible := m.visibleSessions()
 		if m.state != stateKilling && m.cursor < len(visible) {
 			return m, m.previewCmd()
@@ -408,6 +411,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.sessions = msg.sessions
 		m.markSessionsChanged()
+		if m.initialSession != "" {
+			for i, session := range m.visibleSessions() {
+				if session.Name == m.initialSession {
+					m.cursor = i
+					break
+				}
+			}
+			m.initialSession = ""
+		}
 		live := make(map[string]bool, len(m.sessions))
 		for _, s := range m.sessions {
 			live[s.Name] = true
@@ -418,6 +430,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.clampCursor()
+		m.ensureVisible()
 		cmds := []tea.Cmd{fetchProcessInfoCmd(m.sessions)}
 		visible := m.visibleSessions()
 		if len(visible) > 0 && m.cursor < len(visible) {

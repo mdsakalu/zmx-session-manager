@@ -361,7 +361,7 @@ func (m *Model) handleLogScroll(msg tea.KeyPressMsg) {
 }
 
 func (m *Model) ensureVisible() {
-	h := m.mainContentHeight(1)
+	h := m.mainContentHeight(strings.Count(m.renderHelp(), "\n") + 1)
 	if h <= 0 {
 		return
 	}
