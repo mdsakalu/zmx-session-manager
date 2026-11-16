@@ -240,6 +240,59 @@ func NewModel(selectedSession string) Model {
 	return m
 }
 
+type Sort struct {
+	mode sortMode
+	asc  bool
+}
+
+// ParseSort parses "<mode>[:asc|:desc]", where mode is one of name, clients,
+// pid, memory or uptime. An empty string means name ascending.
+func ParseSort(s string) (Sort, error) {
+	if s == "" {
+		return Sort{mode: sortByName, asc: true}, nil
+	}
+	name, dir, hasDir := strings.Cut(strings.ToLower(s), ":")
+	sort := Sort{asc: true}
+	found := false
+	for mode := sortMode(0); mode < sortModeCount; mode++ {
+		if mode.label() == name {
+			sort.mode, found = mode, true
+			break
+		}
+	}
+	if !found {
+		return Sort{}, fmt.Errorf("unknown sort %q (name, clients, pid, memory, uptime)", name)
+	}
+	if hasDir {
+		switch dir {
+		case "asc":
+		case "desc":
+			sort.asc = false
+		default:
+			return Sort{}, fmt.Errorf("unknown sort direction %q (asc, desc)", dir)
+		}
+	}
+	return sort, nil
+}
+
+type Options struct {
+	Sort Sort
+	Wrap bool
+}
+
+func DefaultOptions() Options {
+	return Options{Sort: Sort{mode: sortByName, asc: true}, Wrap: true}
+}
+
+// WithOptions applies starting settings to the model.
+func (m Model) WithOptions(o Options) Model {
+	m.sortMode = o.Sort.mode
+	m.sortAsc = o.Sort.asc
+	m.previewWrap = o.Wrap
+	m.markVisibleChanged()
+	return m
+}
+
 func (m Model) AttachRequest() AttachRequest {
 	return m.attach
 }

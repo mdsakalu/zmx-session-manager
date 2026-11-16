@@ -62,6 +62,19 @@ must still be compatible with the session daemon: for example, zmx 1.0.1 cannot
 retrieve history from a 0.7.1 daemon. Those sessions need a matching older zmx
 client or must be recreated with the new version.
 
+## Options
+
+Each option can be set with a flag or an environment variable. Flags take priority.
+
+| Flag | Environment | Default | Effect |
+|------|-------------|---------|--------|
+| `--sort=<mode>[:asc\|:desc]` | `ZSM_SORT` | `name` | Initial sort: `name`, `clients`, `pid`, `memory` or `uptime` |
+| `--wrap=<bool>` | `ZSM_WRAP` | `true` | Wrap preview lines |
+| `--exit-on-end` | `ZSM_EXIT_ON_END` | `false` | Quit instead of returning to the picker when the attached session ends (for example, `ctrl+d` in its shell). Detaching still returns to the picker. |
+
+Booleans accept `true`/`false` or `1`/`0`. `s` and `w` still change sort and
+wrapping while zsm runs.
+
 ## Key Bindings
 
 | Key | Action |

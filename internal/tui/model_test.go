@@ -579,3 +579,46 @@ func stripStyleCodes(s string) string {
 	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return re.ReplaceAllString(s, "")
 }
+
+func TestParseSort(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantMode sortMode
+		wantAsc  bool
+	}{
+		{"", sortByName, true},
+		{"name", sortByName, true},
+		{"clients", sortByClients, true},
+		{"pid", sortByPID, true},
+		{"memory:desc", sortByMemory, false},
+		{"Uptime:ASC", sortByUptime, true},
+	}
+	for _, c := range cases {
+		got, err := ParseSort(c.in)
+		if err != nil {
+			t.Fatalf("ParseSort(%q) error = %v", c.in, err)
+		}
+		if got.mode != c.wantMode || got.asc != c.wantAsc {
+			t.Errorf("ParseSort(%q) = %+v, want mode %v asc %v", c.in, got, c.wantMode, c.wantAsc)
+		}
+	}
+	for _, bad := range []string{"size", "name:up", "memory:desc:x"} {
+		if _, err := ParseSort(bad); err == nil {
+			t.Errorf("ParseSort(%q) succeeded, want error", bad)
+		}
+	}
+}
+
+func TestWithOptionsSetsInitialSortAndWrap(t *testing.T) {
+	sort, err := ParseSort("memory:desc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel("").WithOptions(Options{Sort: sort, Wrap: false})
+	if m.sortMode != sortByMemory || m.sortAsc || m.previewWrap {
+		t.Fatalf("model sort=%v asc=%v wrap=%v, want memory desc unwrapped", m.sortMode, m.sortAsc, m.previewWrap)
+	}
+	if d := NewModel("").WithOptions(DefaultOptions()); d.sortMode != sortByName || !d.sortAsc || !d.previewWrap {
+		t.Fatalf("default options changed the model: sort=%v asc=%v wrap=%v", d.sortMode, d.sortAsc, d.previewWrap)
+	}
+}

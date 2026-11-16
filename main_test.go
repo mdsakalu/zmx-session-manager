@@ -85,7 +85,7 @@ func TestRunSessionManagerExitsWhenAttachingCurrentSession(t *testing.T) {
 		}, func(tui.AttachRequest) error {
 			t.Error("attempted to attach recursively to the current session")
 			return nil
-		})
+		}, nil)
 		if err != nil || calls != 1 {
 			t.Errorf("current-session selection: calls=%d err=%v, want one UI invocation and no error", calls, err)
 		}
@@ -117,7 +117,7 @@ func TestRunSessionManagerReturnsToUIAfterDetach(t *testing.T) {
 		return nil
 	}
 
-	if err := runSessionManager(runUI, attach); err != nil {
+	if err := runSessionManager(runUI, attach, nil); err != nil {
 		t.Fatalf("runSessionManager() error = %v", err)
 	}
 	if uiCalls != 2 {
@@ -149,8 +149,115 @@ func TestRunSessionManagerRemembersLatestSessionByExactName(t *testing.T) {
 		request := requests[calls]
 		calls++
 		return request, nil
-	}, func(tui.AttachRequest) error { return nil })
+	}, func(tui.AttachRequest) error { return nil }, nil)
 	if err != nil || calls != len(requests) {
 		t.Fatalf("runSessionManager: calls=%d err=%v", calls, err)
+	}
+}
+
+func TestRunSessionManagerExitsWhenAttachedSessionEnds(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "")
+	t.Setenv("ZMX_SESSION_PREFIX", "d.")
+	for _, request := range []tui.AttachRequest{
+		{Target: "d.gone", Mode: tui.AttachAndReturn},
+		{Target: "gone", Mode: tui.AttachAndReturn, NewSession: true},
+	} {
+		uiCalls := 0
+		var checked []string
+		err := runSessionManager(func(string) (tui.AttachRequest, error) {
+			uiCalls++
+			if uiCalls > 1 {
+				t.Fatal("picker reopened after the attached session ended")
+			}
+			return request, nil
+		}, func(tui.AttachRequest) error { return nil }, func(name string) bool {
+			checked = append(checked, name)
+			return false
+		})
+		if err != nil || uiCalls != 1 {
+			t.Fatalf("calls=%d err=%v, want one picker run and no error", uiCalls, err)
+		}
+		if len(checked) != 1 || checked[0] != "d.gone" {
+			t.Fatalf("checked sessions %q, want [d.gone]", checked)
+		}
+	}
+}
+
+func TestRunSessionManagerReturnsToUIWhenSessionSurvives(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "")
+	requests := []tui.AttachRequest{{Target: "alive", Mode: tui.AttachAndReturn}, {}}
+	uiCalls := 0
+	err := runSessionManager(func(string) (tui.AttachRequest, error) {
+		request := requests[uiCalls]
+		uiCalls++
+		return request, nil
+	}, func(tui.AttachRequest) error { return nil }, func(string) bool { return true })
+	if err != nil || uiCalls != 2 {
+		t.Fatalf("calls=%d err=%v, want the picker to reopen after detach", uiCalls, err)
+	}
+}
+
+func TestParseOptions(t *testing.T) {
+	mustSort := func(s string) tui.Sort {
+		sort, err := tui.ParseSort(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sort
+	}
+	cases := []struct {
+		args []string
+		env  map[string]string
+		want options
+	}{
+		{nil, nil, options{ui: tui.DefaultOptions()}},
+		{[]string{"--exit-on-end"}, nil, options{exitOnEnd: true, ui: tui.DefaultOptions()}},
+		{nil, map[string]string{"ZSM_EXIT_ON_END": "1"}, options{exitOnEnd: true, ui: tui.DefaultOptions()}},
+		{nil, map[string]string{"ZSM_EXIT_ON_END": "0"}, options{ui: tui.DefaultOptions()}},
+		{[]string{"-v"}, nil, options{version: true, ui: tui.DefaultOptions()}},
+		{[]string{"--version"}, nil, options{version: true, ui: tui.DefaultOptions()}},
+		{
+			nil,
+			map[string]string{"ZSM_SORT": "memory:desc", "ZSM_WRAP": "0"},
+			options{ui: tui.Options{Sort: mustSort("memory:desc"), Wrap: false}},
+		},
+		{
+			// flags override the environment
+			[]string{"--sort=uptime", "--wrap"},
+			map[string]string{"ZSM_SORT": "memory:desc", "ZSM_WRAP": "0"},
+			options{ui: tui.Options{Sort: mustSort("uptime"), Wrap: true}},
+		},
+		{[]string{"--wrap=false"}, nil, options{ui: tui.Options{Sort: mustSort("name"), Wrap: false}}},
+	}
+	for _, c := range cases {
+		for _, k := range []string{"ZSM_EXIT_ON_END", "ZSM_SORT", "ZSM_WRAP"} {
+			t.Setenv(k, c.env[k])
+		}
+		got, err := parseOptions(c.args)
+		if err != nil {
+			t.Fatalf("parseOptions(%q) env=%v error = %v", c.args, c.env, err)
+		}
+		if got != c.want {
+			t.Errorf("parseOptions(%q) env=%v = %+v, want %+v", c.args, c.env, got, c.want)
+		}
+	}
+}
+
+func TestParseOptionsRejectsBadInput(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		env  map[string]string
+	}{
+		{[]string{"--sort=size"}, nil},
+		{nil, map[string]string{"ZSM_SORT": "size"}},
+		{nil, map[string]string{"ZSM_WRAP": "maybe"}},
+		{[]string{"--bogus"}, nil},
+	} {
+		for _, k := range []string{"ZSM_EXIT_ON_END", "ZSM_SORT", "ZSM_WRAP"} {
+			t.Setenv(k, c.env[k])
+		}
+		if _, err := parseOptions(c.args); err == nil {
+			t.Errorf("parseOptions(%q) env=%v succeeded, want error", c.args, c.env)
+		}
 	}
 }
