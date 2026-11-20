@@ -62,18 +62,31 @@ must still be compatible with the session daemon: for example, zmx 1.0.1 cannot
 retrieve history from a 0.7.1 daemon. Those sessions need a matching older zmx
 client or must be recreated with the new version.
 
-## Options
+## Settings
 
-Each option can be set with a flag or an environment variable. Flags take priority.
+To set defaults for new runs, create `~/.config/zsm/config.toml`. If
+`XDG_CONFIG_HOME` is set to an absolute path, zsm reads
+`$XDG_CONFIG_HOME/zsm/config.toml` instead. The file and each key are optional.
 
-| Flag | Environment | Default | Effect |
-|------|-------------|---------|--------|
-| `--sort=<mode>[:asc\|:desc]` | `ZSM_SORT` | `name` | Initial sort: `name`, `clients`, `pid`, `memory` or `uptime` |
-| `--wrap=<bool>` | `ZSM_WRAP` | `true` | Wrap preview lines |
-| `--exit-on-end` | `ZSM_EXIT_ON_END` | `false` | Quit instead of returning to the picker when the attached session ends (for example, `ctrl+d` in its shell). Detaching still returns to the picker. |
+```toml
+sort = "name:asc"
+wrap = true
+exit_on_end = false
+```
 
-Booleans accept `true`/`false` or `1`/`0`. `s` and `w` still change sort and
-wrapping while zsm runs.
+Sort by `name`, `clients`, `pid`, `memory`, or `uptime`. Append `:desc` for
+descending order, or use `:asc` or omit the direction for ascending order.
+For example, `zsm --sort=memory:desc --wrap=false` shows the largest sessions
+first with unwrapped previews for that run. Changes made with `s` and `w`
+carry over when you detach and return to the picker. A new run reads the file again.
+
+Use `--exit-on-end` to quit after the attached session ends. Detaching,
+a failed attach, or a failed session lookup returns you to the picker.
+Explicit flags take priority, including `--exit-on-end=false`.
+
+Unknown keys and invalid values produce a warning and other valid settings
+still apply. If the file cannot be read or parsed, zsm warns and starts with
+built-in defaults plus any explicit flags. Use `zsm --help` to list the flags.
 
 ## Key Bindings
 

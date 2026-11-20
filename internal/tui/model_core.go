@@ -246,11 +246,8 @@ type Sort struct {
 }
 
 // ParseSort parses "<mode>[:asc|:desc]", where mode is one of name, clients,
-// pid, memory or uptime. An empty string means name ascending.
+// pid, memory or uptime. The direction defaults to ascending.
 func ParseSort(s string) (Sort, error) {
-	if s == "" {
-		return Sort{mode: sortByName, asc: true}, nil
-	}
 	name, dir, hasDir := strings.Cut(strings.ToLower(s), ":")
 	sort := Sort{asc: true}
 	found := false
@@ -291,6 +288,31 @@ func (m Model) WithOptions(o Options) Model {
 	m.previewWrap = o.Wrap
 	m.markVisibleChanged()
 	return m
+}
+
+func (m Model) Options() Options {
+	return Options{Sort: Sort{mode: m.sortMode, asc: m.sortAsc}, Wrap: m.previewWrap}
+}
+
+func (m *Model) focusedName() string {
+	visible := m.visibleSessions()
+	if m.cursor < len(visible) {
+		return visible[m.cursor].Name
+	}
+	return ""
+}
+
+func (m *Model) focusSession(name string) {
+	if name == "" {
+		return
+	}
+	for i, session := range m.visibleSessions() {
+		if session.Name == name {
+			m.cursor = i
+			m.ensureVisible()
+			return
+		}
+	}
 }
 
 func (m Model) AttachRequest() AttachRequest {
@@ -462,17 +484,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 			return m, nil
 		}
-		m.sessions = msg.sessions
-		m.markSessionsChanged()
+		focus := m.focusedName()
 		if m.initialSession != "" {
-			for i, session := range m.visibleSessions() {
-				if session.Name == m.initialSession {
-					m.cursor = i
-					break
-				}
-			}
+			focus = m.initialSession
 			m.initialSession = ""
 		}
+		m.sessions = msg.sessions
+		m.markSessionsChanged()
+		m.focusSession(focus)
 		live := make(map[string]bool, len(m.sessions))
 		for _, s := range m.sessions {
 			live[s.Name] = true
@@ -494,6 +513,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case processInfoMsg:
+		focus := m.focusedName()
 		updated := false
 		for i := range m.sessions {
 			if info, ok := msg.info[m.sessions[i].Name]; ok {
@@ -504,6 +524,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if updated {
 			m.markSessionsChanged()
+			m.focusSession(focus)
 		}
 
 	case previewMsg:

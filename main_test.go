@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,67 +199,112 @@ func TestRunSessionManagerReturnsToUIWhenSessionSurvives(t *testing.T) {
 	}
 }
 
-func TestParseOptions(t *testing.T) {
-	mustSort := func(s string) tui.Sort {
-		sort, err := tui.ParseSort(s)
-		if err != nil {
-			t.Fatal(err)
+func TestFailedAttachReturnsToPickerWithExitOnEnd(t *testing.T) {
+	t.Setenv("ZMX_SESSION", "")
+	calls := 0
+	err := runSessionManager(func(string) (tui.AttachRequest, error) {
+		calls++
+		if calls == 1 {
+			return tui.AttachRequest{Target: "gone", Mode: tui.AttachAndReturn}, nil
 		}
-		return sort
-	}
-	cases := []struct {
-		args []string
-		env  map[string]string
-		want options
-	}{
-		{nil, nil, options{ui: tui.DefaultOptions()}},
-		{[]string{"--exit-on-end"}, nil, options{exitOnEnd: true, ui: tui.DefaultOptions()}},
-		{nil, map[string]string{"ZSM_EXIT_ON_END": "1"}, options{exitOnEnd: true, ui: tui.DefaultOptions()}},
-		{nil, map[string]string{"ZSM_EXIT_ON_END": "0"}, options{ui: tui.DefaultOptions()}},
-		{[]string{"-v"}, nil, options{version: true, ui: tui.DefaultOptions()}},
-		{[]string{"--version"}, nil, options{version: true, ui: tui.DefaultOptions()}},
-		{
-			nil,
-			map[string]string{"ZSM_SORT": "memory:desc", "ZSM_WRAP": "0"},
-			options{ui: tui.Options{Sort: mustSort("memory:desc"), Wrap: false}},
-		},
-		{
-			// flags override the environment
-			[]string{"--sort=uptime", "--wrap"},
-			map[string]string{"ZSM_SORT": "memory:desc", "ZSM_WRAP": "0"},
-			options{ui: tui.Options{Sort: mustSort("uptime"), Wrap: true}},
-		},
-		{[]string{"--wrap=false"}, nil, options{ui: tui.Options{Sort: mustSort("name"), Wrap: false}}},
-	}
-	for _, c := range cases {
-		for _, k := range []string{"ZSM_EXIT_ON_END", "ZSM_SORT", "ZSM_WRAP"} {
-			t.Setenv(k, c.env[k])
-		}
-		got, err := parseOptions(c.args)
-		if err != nil {
-			t.Fatalf("parseOptions(%q) env=%v error = %v", c.args, c.env, err)
-		}
-		if got != c.want {
-			t.Errorf("parseOptions(%q) env=%v = %+v, want %+v", c.args, c.env, got, c.want)
-		}
+		return tui.AttachRequest{}, nil
+	}, func(r tui.AttachRequest) error {
+		return attachToSession("/usr/bin/false", r)
+	}, func(string) bool {
+		t.Fatal("checked session existence after failed attach")
+		return false
+	})
+	if err != nil || calls != 2 {
+		t.Fatalf("calls=%d err=%v", calls, err)
 	}
 }
 
-func TestParseOptionsRejectsBadInput(t *testing.T) {
-	for _, c := range []struct {
-		args []string
-		env  map[string]string
+func TestOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name, file string
+		args       []string
+		sort       string
+		wrap, exit bool
+		warnings   []string
 	}{
-		{[]string{"--sort=size"}, nil},
-		{nil, map[string]string{"ZSM_SORT": "size"}},
-		{nil, map[string]string{"ZSM_WRAP": "maybe"}},
-		{[]string{"--bogus"}, nil},
+		{"missing", "", nil, "name", true, false, nil},
+		{"file", "wrap=false\nsort='memory:desc'\nexit_on_end=true", nil, "memory:desc", false, true, nil},
+		{"flags", "wrap=false\nsort='memory:desc'\nexit_on_end=true", []string{"--wrap", "--sort=pid", "--exit-on-end=false"}, "pid", true, false, nil},
+		{"invalid entries", "wrap=false\nsort='bad'\nexit_on_end=1\nfoo=true", nil, "name", false, false, []string{"sort:", "exit_on_end:", "foo:"}},
+		{"malformed", "wrap=false\n?!!", []string{"--exit-on-end"}, "name", true, true, []string{"config.toml"}},
+		{"unreadable", "<directory>", nil, "name", true, false, []string{"config.toml"}},
 	} {
-		for _, k := range []string{"ZSM_EXIT_ON_END", "ZSM_SORT", "ZSM_WRAP"} {
-			t.Setenv(k, c.env[k])
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", root)
+			dir := filepath.Join(root, "zsm")
+			path := filepath.Join(dir, "config.toml")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			switch tc.file {
+			case "<directory>":
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "":
+			default:
+				if err := os.WriteFile(path, []byte(tc.file), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var output strings.Builder
+			opts, err := parseOptions(tc.args, &output)
+			wantSort, _ := tui.ParseSort(tc.sort)
+			if err != nil || opts.ui.Sort != wantSort || opts.ui.Wrap != tc.wrap || opts.exitOnEnd != tc.exit {
+				t.Fatalf("options=%+v err=%v", opts, err)
+			}
+			if n := strings.Count(output.String(), "Warning: "+path); n != len(tc.warnings) {
+				t.Errorf("unexpected warnings: %q", output.String())
+			}
+			for _, w := range tc.warnings {
+				if !strings.Contains(output.String(), w) {
+					t.Errorf("missing %q in %q", w, output.String())
+				}
+			}
+		})
+	}
+}
+
+func TestInformationFlagsAndInvalidCLI(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	dir := filepath.Join(root, ".config", "zsm")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.toml"), []byte("wrap=false\nunknown=1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if o, err := parseOptions(nil, &out); err != nil || o.ui.Wrap {
+		t.Fatalf("home config: %+v %v", o, err)
+	}
+	for _, arg := range []string{"--version", "-v", "--help", "--wrap=invalid", "--sort=", "--sort=invalid", "--unknown"} {
+		out.Reset()
+		opts, err := parseOptions([]string{arg}, &out)
+		switch arg {
+		case "--help":
+			if !errors.Is(err, flag.ErrHelp) {
+				t.Fatal(err)
+			}
+		case "--version", "-v":
+			if err != nil || !opts.version {
+				t.Fatalf("%s: %+v %v", arg, opts, err)
+			}
+		default:
+			if err == nil {
+				t.Fatalf("%s accepted", arg)
+			}
 		}
-		if _, err := parseOptions(c.args); err == nil {
-			t.Errorf("parseOptions(%q) env=%v succeeded, want error", c.args, c.env)
+		if strings.Contains(out.String(), "Warning:") {
+			t.Fatalf("%s read config", arg)
 		}
 	}
 }

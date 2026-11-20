@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mdsakalu/zmx-session-manager/internal/zmx"
 )
 
 func TestPreviewWrapsAtPaneWidth(t *testing.T) {
@@ -580,13 +581,31 @@ func stripStyleCodes(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+func TestStatsPreserveReattachTarget(t *testing.T) {
+	for _, spec := range []string{"memory:desc", "uptime:desc"} {
+		order, _ := ParseSort(spec)
+		m := NewModel("beta").WithOptions(Options{Sort: order})
+		for _, msg := range []tea.Msg{
+			sessionsMsg{sessions: []Session{{Name: "alpha"}, {Name: "beta"}}},
+			processInfoMsg{info: map[string]zmx.ProcessInfo{"beta": {Memory: 9, Uptime: 9}}},
+			tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}),
+		} {
+			next, _ := m.Update(msg)
+			m = next.(Model)
+		}
+		if got := m.AttachRequest().Target; got != "beta" {
+			t.Errorf("%s selected %s", spec, got)
+		}
+	}
+}
+
 func TestParseSort(t *testing.T) {
 	cases := []struct {
 		in       string
 		wantMode sortMode
 		wantAsc  bool
 	}{
-		{"", sortByName, true},
+		{"name:desc", sortByName, false},
 		{"name", sortByName, true},
 		{"clients", sortByClients, true},
 		{"pid", sortByPID, true},
