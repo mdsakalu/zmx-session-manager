@@ -4,6 +4,7 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
+  pull-requests: read
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -11,6 +12,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Check contributor credits
+        run: bash .github/scripts/check-contributors.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
