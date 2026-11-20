@@ -329,7 +329,17 @@ func TestAttachNewSessionUsesSelectedWorkingDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(got)) != workdir {
+	// The shell reports the resolved physical path (e.g. /private/var on
+	// macOS), so resolve symlinks before comparing.
+	want, err := filepath.EvalSymlinks(workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDir, err := filepath.EvalSymlinks(strings.TrimSpace(string(got)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != want {
 		t.Fatalf("working directory = %q, want %q", got, workdir)
 	}
 }

@@ -126,7 +126,7 @@ func fetchZoxideDirsCmd() tea.Msg {
 		return zoxideDirsMsg{err: fmt.Errorf("zoxide query --list: %w", err)}
 	}
 	var dirs []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		dir := strings.TrimSpace(line)
 		if dir == "" {
 			continue
@@ -286,7 +286,7 @@ func ParseSort(s string) (Sort, error) {
 	name, dir, hasDir := strings.Cut(strings.ToLower(s), ":")
 	sort := Sort{asc: true}
 	found := false
-	for mode := sortMode(0); mode < sortModeCount; mode++ {
+	for mode := range sortModeCount {
 		if mode.label() == name {
 			sort.mode, found = mode, true
 			break
@@ -489,10 +489,7 @@ func computeListMetrics(sessions []Session) listMetrics {
 func (m *Model) addLog(line string) {
 	ts := logDimStyle.Render(time.Now().Format("15:04:05"))
 	m.logLines = append(m.logLines, ts+" "+line)
-	maxOff := len(m.logLines) - logContentHeight
-	if maxOff < 0 {
-		maxOff = 0
-	}
+	maxOff := max(len(m.logLines)-logContentHeight, 0)
 	m.logOffset = maxOff
 }
 

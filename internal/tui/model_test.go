@@ -25,7 +25,7 @@ func TestPreviewWrapsAtPaneWidth(t *testing.T) {
 			if !strings.Contains(content, "CONTINUATION") {
 				t.Fatal("long output was cropped instead of wrapping inside the preview")
 			}
-			for _, line := range strings.Split(content, "\n") {
+			for line := range strings.SplitSeq(content, "\n") {
 				if got := lipgloss.Width(line); got > width {
 					t.Fatalf("rendered line width %d exceeds terminal width %d", got, width)
 				}
@@ -125,7 +125,7 @@ func TestWrappedPreviewPreservesWideGraphemesAndIndentation(t *testing.T) {
 	if strings.Count(got, "界") != width || !strings.Contains(got, "👩🏽") || !strings.HasPrefix(got, "  ") {
 		t.Fatalf("wrapping lost a character or indentation: %q", got)
 	}
-	for _, line := range strings.Split(got, "\n") {
+	for line := range strings.SplitSeq(got, "\n") {
 		if ansi.StringWidth(line) != width {
 			t.Fatalf("wrapped row does not fill the pane width: %q", line)
 		}

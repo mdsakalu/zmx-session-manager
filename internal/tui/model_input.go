@@ -74,10 +74,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		maxW := previewMaxWidth(m.preview)
-		limit := maxW - m.previewInnerWidth()
-		if limit < 0 {
-			limit = 0
-		}
+		limit := max(maxW-m.previewInnerWidth(), 0)
 		if m.previewScrollX+4 <= limit {
 			m.previewScrollX += 4
 		} else {
@@ -351,10 +348,7 @@ func (m *Model) handleLogScroll(msg tea.KeyPressMsg) {
 	if !isRune(msg, "[") && !isRune(msg, "]") {
 		return
 	}
-	maxOffset := len(m.logLines) - logContentHeight
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
+	maxOffset := max(len(m.logLines)-logContentHeight, 0)
 	if isRune(msg, "[") && m.logOffset > 0 {
 		m.logOffset--
 	}

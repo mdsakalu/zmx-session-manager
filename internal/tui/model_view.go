@@ -13,7 +13,7 @@ import (
 
 func previewMaxWidth(raw string) int {
 	maxW := 0
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		if w := ansi.StringWidth(line); w > maxW {
 			maxW = w
 		}
@@ -47,10 +47,7 @@ func (m *Model) renderPreview(height int) string {
 
 func (m Model) mainContentHeight(helpLines int) int {
 	// 4 = 2 (list/preview borders) + 2 (log borders)
-	h := m.height - logContentHeight - 4 - helpLines
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-logContentHeight-4-helpLines, 1)
 	return h
 }
 
@@ -67,10 +64,7 @@ func (m *Model) listOuterWidth() int {
 
 	metrics := m.allSessionMetrics()
 	// 2 (indicator) + name + " " + pid + " " + mem + " " + uptime + " " + client + 2 (borders)
-	w := 2 + metrics.nameW + 1 + metrics.pidW + 1 + metrics.memW + 1 + metrics.uptimeW + 1 + metrics.clientW + 2
-	if w < titleMin {
-		w = titleMin
-	}
+	w := max(2+metrics.nameW+1+metrics.pidW+1+metrics.memW+1+metrics.uptimeW+1+metrics.clientW+2, titleMin)
 	if w > listMaxOuterWidth {
 		w = listMaxOuterWidth
 	}
@@ -86,10 +80,7 @@ func (m *Model) listInnerWidth() int {
 }
 
 func (m *Model) previewOuterWidth() int {
-	w := m.width - m.listOuterWidth()
-	if w < 10 {
-		w = 10
-	}
+	w := max(m.width-m.listOuterWidth(), 10)
 	return w
 }
 
@@ -212,14 +203,8 @@ func (m Model) renderLog() string {
 		return logDimStyle.Render("  No activity yet.")
 	}
 
-	end := m.logOffset + logContentHeight
-	if end > len(m.logLines) {
-		end = len(m.logLines)
-	}
-	start := m.logOffset
-	if start < 0 {
-		start = 0
-	}
+	end := min(m.logOffset+logContentHeight, len(m.logLines))
+	start := max(m.logOffset, 0)
 
 	var b strings.Builder
 	for i := start; i < end; i++ {
@@ -251,10 +236,7 @@ func (m *Model) renderList(maxRows int) string {
 	metrics := m.visibleMetrics
 	var b strings.Builder
 
-	end := m.listOffset + maxRows
-	if end > len(visible) {
-		end = len(visible)
-	}
+	end := min(m.listOffset+maxRows, len(visible))
 
 	for i := m.listOffset; i < end; i++ {
 		s := visible[i]
@@ -295,10 +277,7 @@ func (m *Model) renderList(maxRows int) string {
 		uptimeStr := uptimeStyle.Render(padLeft(uptimeLabel, metrics.uptimeW))
 
 		// lw = indicator(2) + name + " " + pid + " " + mem + " " + uptime + " " + client
-		nameWidth := lw - 6 - metrics.pidW - metrics.memW - metrics.uptimeW - metrics.clientW
-		if nameWidth < 10 {
-			nameWidth = 10
-		}
+		nameWidth := max(lw-6-metrics.pidW-metrics.memW-metrics.uptimeW-metrics.clientW, 10)
 		name := truncate(s.Name, nameWidth)
 		paddedName := padRight(name, nameWidth)
 
@@ -444,10 +423,7 @@ func buildTopBorderLRStyled(left, right string, outerWidth int, rs lipgloss.Styl
 		rightVW = lipgloss.Width(styledRight)
 	}
 
-	maxVW := outerWidth - 4
-	if maxVW < 1 {
-		maxVW = 1
-	}
+	maxVW := max(outerWidth-4, 1)
 
 	// Truncate right (dir) first to preserve left (session name)
 	if leftVW+rightVW > maxVW {
@@ -469,10 +445,7 @@ func buildTopBorderLRStyled(left, right string, outerWidth int, rs lipgloss.Styl
 		leftVW = lipgloss.Width(styledLeft)
 	}
 
-	fill := outerWidth - 3 - leftVW - rightVW
-	if fill < 0 {
-		fill = 0
-	}
+	fill := max(outerWidth-3-leftVW-rightVW, 0)
 
 	result := borderCharStyle.Render("╭─") + styledLeft
 	if styledRight != "" {
@@ -487,10 +460,7 @@ func buildBottomBorderR(right string, outerWidth int) string {
 	styledRight := selectedStyle.Render(right)
 	rightVW := lipgloss.Width(styledRight)
 	// ╰ (1) + fill + right (rightVW) + ╯ (1) = outerWidth
-	fill := outerWidth - 2 - rightVW
-	if fill < 0 {
-		fill = 0
-	}
+	fill := max(outerWidth-2-rightVW, 0)
 	return borderCharStyle.Render("╰"+strings.Repeat("─", fill)) + styledRight + borderCharStyle.Render("╯")
 }
 
