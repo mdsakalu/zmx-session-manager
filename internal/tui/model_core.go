@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -56,6 +57,7 @@ type AttachRequest struct {
 	Mode   AttachMode
 	// NewSession targets are user input and still need zmx's configured prefix.
 	NewSession bool
+	WorkingDir string
 }
 
 func (s sortMode) label() string {
@@ -107,7 +109,38 @@ type processInfoMsg struct {
 
 type allGoneMsg struct{}
 
+type zoxideDirsMsg struct {
+	dirs []string
+	err  error
+}
+
 // Commands
+
+func fetchZoxideDirsCmd() tea.Msg {
+	path, err := exec.LookPath("zoxide")
+	if err != nil {
+		return zoxideDirsMsg{err: fmt.Errorf("zoxide not found in PATH (install zoxide to use this picker)")}
+	}
+	out, err := exec.Command(path, "query", "--list").CombinedOutput()
+	if err != nil {
+		return zoxideDirsMsg{err: fmt.Errorf("zoxide query --list: %w", err)}
+	}
+	var dirs []string
+	for _, line := range strings.Split(string(out), "\n") {
+		dir := strings.TrimSpace(line)
+		if dir == "" {
+			continue
+		}
+		abs, e := filepath.Abs(dir)
+		if e == nil {
+			dir = abs
+		}
+		if info, e := os.Stat(dir); e == nil && info.IsDir() {
+			dirs = append(dirs, dir)
+		}
+	}
+	return zoxideDirsMsg{dirs: dirs}
+}
 
 func fetchSessionsCmd() tea.Msg {
 	sessions, err := zmx.FetchSessions()
@@ -202,6 +235,8 @@ type Model struct {
 	height int
 	err    error
 
+	directories       []string
+	directoryMode     bool
 	visibleCache      []Session
 	visibleCacheDirty bool
 	visibleMetrics    listMetrics
@@ -348,6 +383,15 @@ func (m *Model) allSessionMetrics() listMetrics {
 }
 
 func (m *Model) computeVisibleSessions() []Session {
+	if m.directoryMode {
+		var dirs []Session
+		for _, dir := range m.directories {
+			if m.filterText == "" || strings.Contains(strings.ToLower(dir), strings.ToLower(m.filterText)) || strings.Contains(strings.ToLower(filepath.Base(dir)), strings.ToLower(m.filterText)) {
+				dirs = append(dirs, Session{Name: filepath.Base(dir), StartedIn: dir})
+			}
+		}
+		return dirs
+	}
 	var filtered []Session
 	if m.filterText == "" {
 		filtered = make([]Session, len(m.sessions))
@@ -479,6 +523,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.previewCmd()
 		}
 
+	case zoxideDirsMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			m.addLog(confirmStyle.Render("  ✗ " + msg.err.Error()))
+			m.directoryMode = false
+			m.markVisibleChanged()
+			return m, nil
+		}
+		m.directories = msg.dirs
+		m.directoryMode = true
+		m.status = ""
+		m.filterText = ""
+		m.cursor = 0
+		m.listOffset = 0
+		m.preview = "Select a directory, then press Enter to create and attach a zmx session there."
+		m.markVisibleChanged()
+		return m, nil
+
 	case sessionsMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -583,6 +645,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.state == stateNewSession {
 			return m.handleNewSessionKey(msg)
 		}
+		if m.directoryMode {
+			return m.handleDirectoryKey(msg)
+		}
 		return m.handleKey(msg)
 	}
 
@@ -605,6 +670,9 @@ func (m *Model) finishKill() tea.Cmd {
 }
 
 func (m *Model) previewCmd() tea.Cmd {
+	if m.directoryMode {
+		return nil
+	}
 	m.preview = ""
 	m.previewScrollback = false
 	visible := m.visibleSessions()

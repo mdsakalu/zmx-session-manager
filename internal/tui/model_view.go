@@ -123,7 +123,10 @@ func (m Model) View() tea.View {
 	listContent = clampLines(listContent, ch)
 
 	listTitleLeft := fmt.Sprintf(" zmx sessions (%d) ", len(visible))
-	if len(visible) != len(m.sessions) {
+	if m.directoryMode {
+		listTitleLeft = fmt.Sprintf(" zoxide directories (%d) ", len(visible))
+	}
+	if !m.directoryMode && len(visible) != len(m.sessions) {
 		listTitleLeft = fmt.Sprintf(" zmx (%d/%d) ", len(visible), len(m.sessions))
 	}
 	sortArrow := "↑"
@@ -131,6 +134,9 @@ func (m Model) View() tea.View {
 		sortArrow = "↓"
 	}
 	listTitleRight := fmt.Sprintf(" %s %s ", sortArrow, m.sortMode.label())
+	if m.directoryMode {
+		listTitleRight = " zoxide query --list "
+	}
 
 	low := m.listOuterWidth()
 	listPane := listBorderStyle.
@@ -145,6 +151,13 @@ func (m Model) View() tea.View {
 
 	// --- Preview pane ---
 	previewContent := m.renderPreview(ch)
+	if m.directoryMode {
+		if m.cursor < len(visible) {
+			previewContent = "\n  " + visible[m.cursor].StartedIn + "\n\n  Enter: create/attach a session in this directory\n"
+		} else {
+			previewContent = "\n  No directories found in zoxide database."
+		}
+	}
 	previewTitleLeft := " Preview "
 	previewTitleRight := ""
 	if m.cursor < len(visible) {
@@ -223,6 +236,9 @@ func (m *Model) renderList(maxRows int) string {
 	if len(visible) == 0 {
 		if m.filterText != "" {
 			return normalStyle.Render("  No matches. Esc to clear filter.")
+		}
+		if m.directoryMode {
+			return normalStyle.Render("  No directories found. Press ") + helpKeyStyle.Render("r") + normalStyle.Render(" to refresh.")
 		}
 		return normalStyle.Render("  No sessions found. Press ") +
 			helpKeyStyle.Render("n") +
@@ -309,6 +325,9 @@ func (m *Model) renderList(maxRows int) string {
 }
 
 func (m Model) renderHelp() string {
+	if m.directoryMode && m.state != stateFilter {
+		return helpStyle.Render(" zoxide directories  ") + helpKeyStyle.Render("↑↓") + helpStyle.Render(" navigate  ") + helpKeyStyle.Render("enter") + helpStyle.Render(" create session  ") + helpKeyStyle.Render("/") + helpStyle.Render(" filter  ") + helpKeyStyle.Render("r") + helpStyle.Render(" refresh  ") + helpKeyStyle.Render("esc") + helpStyle.Render(" back")
+	}
 	if m.state == stateKilling {
 		return helpStyle.Render(" [] scroll log  ") + helpKeyStyle.Render("q") + helpStyle.Render(" quit")
 	}
@@ -344,8 +363,9 @@ func (m Model) renderHelp() string {
 		helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav"),
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),
-		helpKeyStyle.Render("enter") + helpStyle.Render(" attach"),
+		helpKeyStyle.Render("enter") + helpStyle.Render(" attach & exit"),
 		helpKeyStyle.Render("n") + helpStyle.Render(" new"),
+		helpKeyStyle.Render("z") + helpStyle.Render(" zoxide"),
 		helpKeyStyle.Render("e") + helpStyle.Render(" exec"),
 		helpKeyStyle.Render("k") + helpStyle.Render(" kill"),
 		helpKeyStyle.Render("c") + helpStyle.Render(" copy cmd"),

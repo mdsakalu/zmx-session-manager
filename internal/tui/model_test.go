@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -400,9 +402,9 @@ func TestAttachKeysProduceExplicitRequests(t *testing.T) {
 		want AttachRequest
 	}{
 		{
-			name: "enter returns to zsm after detach",
+			name: "enter replaces zsm process",
 			key:  tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}),
-			want: AttachRequest{Target: "demo", Mode: AttachAndReturn},
+			want: AttachRequest{Target: "demo", Mode: AttachReplaceProcess},
 		},
 		{
 			name: "e replaces zsm process",
@@ -639,5 +641,53 @@ func TestWithOptionsSetsInitialSortAndWrap(t *testing.T) {
 	}
 	if d := NewModel("").WithOptions(DefaultOptions()); d.sortMode != sortByName || !d.sortAsc || !d.previewWrap {
 		t.Fatalf("default options changed the model: sort=%v asc=%v wrap=%v", d.sortMode, d.sortAsc, d.previewWrap)
+	}
+}
+
+func TestZoxideDirectorySelectionCreatesSessionInSelectedDirectory(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModel("")
+	m.directoryMode = true
+	m.directories = []string{dir}
+	m.markVisibleChanged()
+	updated, cmd := m.handleDirectoryKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	if cmd == nil {
+		t.Fatal("expected picker to quit after selecting directory")
+	}
+	got := updated.(Model).AttachRequest()
+	want := AttachRequest{Target: filepath.Base(dir), Mode: AttachAndReturn, NewSession: true, WorkingDir: dir}
+	if got != want {
+		t.Fatalf("attach request = %+v, want %+v", got, want)
+	}
+}
+
+func TestZoxideDirectoryPickerFiltersByPath(t *testing.T) {
+	m := NewModel("")
+	m.directoryMode = true
+	m.directories = []string{"/work/api", "/work/web", "/home/user/dotfiles"}
+	m.markVisibleChanged()
+	m.filterText = "web"
+	m.markVisibleChanged()
+	got := m.visibleSessions()
+	if len(got) != 1 || got[0].StartedIn != "/work/web" {
+		t.Fatalf("filtered directories = %+v", got)
+	}
+}
+
+func TestFetchZoxideDirectoriesUsesZoxideQuery(t *testing.T) {
+	bin := t.TempDir()
+	dir := t.TempDir()
+	script := filepath.Join(bin, "zoxide")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$ZSM_ZOXIDE_DIR\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("ZSM_ZOXIDE_DIR", dir)
+	msg, ok := fetchZoxideDirsCmd().(zoxideDirsMsg)
+	if !ok || msg.err != nil {
+		t.Fatalf("zoxide result = %#v", msg)
+	}
+	if len(msg.dirs) != 1 || msg.dirs[0] != dir {
+		t.Fatalf("directories = %#v, want %q", msg.dirs, dir)
 	}
 }
