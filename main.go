@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,7 +20,15 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "-v" || os.Args[1] == "--version") {
+	opts, err := parseOptions(os.Args[1:], os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	if opts.version {
 		fmt.Printf("zsm %s (%s, %s)\n", version, commit, date)
 		return
 	}
@@ -29,18 +39,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = runSessionManager(runTUI, func(request tui.AttachRequest) error {
+	var sessionExists func(string) bool
+	if opts.exitOnEnd {
+		sessionExists = zmxSessionExists
+	}
+
+	runUI := func(selectedSession string) (tui.AttachRequest, error) {
+		return runTUI(selectedSession, &opts.ui)
+	}
+	err = runSessionManager(runUI, func(request tui.AttachRequest) error {
 		return attachToSession(zmxPath, request)
-	})
+	}, sessionExists)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
+func zmxSessionExists(name string) bool {
+	sessions, err := zmx.FetchSessions()
+	if err != nil {
+		// Can't tell; returning to the picker is the safe default.
+		return true
+	}
+	for _, s := range sessions {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// runSessionManager loops picker -> attach -> picker. If sessionExists is
+// non-nil, it quits once an attached session no longer exists.
 func runSessionManager(
 	runUI func(string) (tui.AttachRequest, error),
 	attach func(tui.AttachRequest) error,
+	sessionExists func(string) bool,
 ) error {
 	selectedSession := ""
 	for {
@@ -55,7 +90,13 @@ func runSessionManager(
 			return nil
 		}
 		if err := attach(request); err != nil {
-			return fmt.Errorf("attach to session %q: %w", request.Target, err)
+			if request.Mode != tui.AttachAndReturn {
+				return fmt.Errorf("attach to session %q: %w", request.Target, err)
+			}
+			fmt.Fprintf(os.Stderr, "Error: failed to attach to session %q: %v\n", request.Target, err)
+			fmt.Print("Press Enter to return to zsm...")
+			fmt.Scanln()
+			continue
 		}
 		if request.Mode == tui.AttachReplaceProcess {
 			return fmt.Errorf("replace attach for session %q returned unexpectedly", request.Target)
@@ -64,11 +105,14 @@ func runSessionManager(
 		if request.NewSession {
 			selectedSession = os.Getenv("ZMX_SESSION_PREFIX") + selectedSession
 		}
+		if sessionExists != nil && !sessionExists(selectedSession) {
+			return nil
+		}
 	}
 }
 
-func runTUI(selectedSession string) (tui.AttachRequest, error) {
-	finalModel, err := tea.NewProgram(tui.NewModel(selectedSession)).Run()
+func runTUI(selectedSession string, opts *tui.Options) (tui.AttachRequest, error) {
+	finalModel, err := tea.NewProgram(tui.NewModel(selectedSession).WithOptions(*opts)).Run()
 	if err != nil {
 		return tui.AttachRequest{}, err
 	}
@@ -76,6 +120,7 @@ func runTUI(selectedSession string) (tui.AttachRequest, error) {
 	if !ok {
 		return tui.AttachRequest{}, nil
 	}
+	*opts = m.Options()
 	return m.AttachRequest(), nil
 }
 
@@ -91,13 +136,7 @@ func attachToSession(zmxPath string, request tui.AttachRequest) error {
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: failed to attach to session %q: %v\n", request.Target, err)
-			fmt.Print("Press Enter to return to zsm...")
-			var input string
-			fmt.Scanln(&input)
-		}
-		return nil
+		return cmd.Run()
 	case tui.AttachReplaceProcess:
 		return syscall.Exec(zmxPath, []string{"zmx", "attach", request.Target}, env)
 	default:

@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/mdsakalu/zmx-session-manager/internal/zmx"
 )
 
 func TestPreviewWrapsAtPaneWidth(t *testing.T) {
@@ -578,4 +579,65 @@ func TestEmptyListHighlightsRefreshKey(t *testing.T) {
 func stripStyleCodes(s string) string {
 	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return re.ReplaceAllString(s, "")
+}
+
+func TestStatsPreserveReattachTarget(t *testing.T) {
+	for _, spec := range []string{"memory:desc", "uptime:desc"} {
+		order, _ := ParseSort(spec)
+		m := NewModel("beta").WithOptions(Options{Sort: order})
+		for _, msg := range []tea.Msg{
+			sessionsMsg{sessions: []Session{{Name: "alpha"}, {Name: "beta"}}},
+			processInfoMsg{info: map[string]zmx.ProcessInfo{"beta": {Memory: 9, Uptime: 9}}},
+			tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}),
+		} {
+			next, _ := m.Update(msg)
+			m = next.(Model)
+		}
+		if got := m.AttachRequest().Target; got != "beta" {
+			t.Errorf("%s selected %s", spec, got)
+		}
+	}
+}
+
+func TestParseSort(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantMode sortMode
+		wantAsc  bool
+	}{
+		{"name:desc", sortByName, false},
+		{"name", sortByName, true},
+		{"clients", sortByClients, true},
+		{"pid", sortByPID, true},
+		{"memory:desc", sortByMemory, false},
+		{"Uptime:ASC", sortByUptime, true},
+	}
+	for _, c := range cases {
+		got, err := ParseSort(c.in)
+		if err != nil {
+			t.Fatalf("ParseSort(%q) error = %v", c.in, err)
+		}
+		if got.mode != c.wantMode || got.asc != c.wantAsc {
+			t.Errorf("ParseSort(%q) = %+v, want mode %v asc %v", c.in, got, c.wantMode, c.wantAsc)
+		}
+	}
+	for _, bad := range []string{"size", "name:up", "memory:desc:x"} {
+		if _, err := ParseSort(bad); err == nil {
+			t.Errorf("ParseSort(%q) succeeded, want error", bad)
+		}
+	}
+}
+
+func TestWithOptionsSetsInitialSortAndWrap(t *testing.T) {
+	sort, err := ParseSort("memory:desc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel("").WithOptions(Options{Sort: sort, Wrap: false})
+	if m.sortMode != sortByMemory || m.sortAsc || m.previewWrap {
+		t.Fatalf("model sort=%v asc=%v wrap=%v, want memory desc unwrapped", m.sortMode, m.sortAsc, m.previewWrap)
+	}
+	if d := NewModel("").WithOptions(DefaultOptions()); d.sortMode != sortByName || !d.sortAsc || !d.previewWrap {
+		t.Fatalf("default options changed the model: sort=%v asc=%v wrap=%v", d.sortMode, d.sortAsc, d.previewWrap)
+	}
 }
