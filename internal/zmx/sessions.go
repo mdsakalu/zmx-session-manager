@@ -60,7 +60,7 @@ func FetchSessions() ([]Session, error) {
 	}
 
 	var sessions []Session
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
 		current := strings.HasPrefix(line, "→")
 		line = strings.TrimSpace(strings.TrimPrefix(line, "→"))
@@ -69,7 +69,7 @@ func FetchSessions() ([]Session, error) {
 		}
 
 		s := Session{Current: current}
-		for _, field := range strings.Split(line, "\t") {
+		for field := range strings.SplitSeq(line, "\t") {
 			k, v, ok := strings.Cut(field, "=")
 			if !ok {
 				continue

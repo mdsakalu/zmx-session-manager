@@ -15,6 +15,7 @@ zsm is maintained and improved by its community. Thank you to everyone who has c
 - [@ngildenhuys](https://github.com/ngildenhuys) — initial Nix flake implementation.
 - [@osamu2001](https://github.com/osamu2001) — Vim-style navigation contribution.
 - [@emptyflask](https://github.com/emptyflask) — contributed configurable sort, preview wrapping, and exit-on-end behavior in [#41](https://github.com/mdsakalu/zmx-session-manager/pull/41).
+- [@trkpriest](https://github.com/tekpriest) - zoxide integration for directory based session management [#44](https://github.com/mdsakalu/zmx-session-manager/pull/44).
 
 ## Reports, ideas, and validation
 

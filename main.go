@@ -133,11 +133,19 @@ func attachToSession(zmxPath string, request tui.AttachRequest) error {
 	case tui.AttachAndReturn:
 		cmd := exec.Command(zmxPath, "attach", request.Target)
 		cmd.Env = env
+		if request.NewSession && request.WorkingDir != "" {
+			cmd.Dir = request.WorkingDir
+		}
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	case tui.AttachReplaceProcess:
+		if request.WorkingDir != "" {
+			if err := os.Chdir(request.WorkingDir); err != nil {
+				return fmt.Errorf("change directory to %q: %w", request.WorkingDir, err)
+			}
+		}
 		return syscall.Exec(zmxPath, []string{"zmx", "attach", request.Target}, env)
 	default:
 		return fmt.Errorf("unsupported attach mode %d", request.Mode)

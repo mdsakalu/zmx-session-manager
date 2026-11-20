@@ -54,7 +54,7 @@ nix develop github:mdsakalu/zmx-session-manager
 
 ## Requirements
 
-[zmx](https://github.com/neurosnap/zmx) must be installed and available in your `PATH`. Current-screen previews use zmx 1.0.1 or newer. Older installations retain scrollback previews, labeled `[scrollback]` in the preview title. zsm retains compatibility with the legacy `session_name`/`started_in` list format.
+[zmx](https://github.com/neurosnap/zmx) must be installed and available in your `PATH`. [zoxide](https://github.com/ajeetdsouza/zoxide) is optional and enables the directory picker (`z`). Current-screen previews use zmx 1.0.1 or newer. Older installations retain scrollback previews, labeled `[scrollback]` in the preview title. zsm retains compatibility with the legacy `session_name`/`started_in` list format.
 
 After upgrading zmx, older session daemons may not support screen capture. zsm
 falls back to scrollback when the daemon reports that limitation. The zmx client
@@ -99,6 +99,7 @@ built-in defaults plus any explicit flags. Use `zsm --help` to list the flags.
 | `ctrl+a` | Select / deselect all |
 | `enter` | Attach to session, then return to zsm after detaching |
 | `n` | Create and attach to a new session |
+| `z` | Browse zoxide directories and create a session in the selected directory |
 | `e` | Attach by replacing zsm (legacy behavior) |
 | `k` | Kill selected session(s) |
 | `c` | Copy attach command |
@@ -107,6 +108,8 @@ built-in defaults plus any explicit flags. Use `zsm --help` to list the flags.
 | `[` `]` | Scroll activity log |
 | `q` | Quit |
 | `esc` | Quit, or clear an active filter |
+
+The zoxide picker reads `zoxide query --list`; it filters the database entries and creates a new zmx session with the selected directory as its working directory. Install and initialize zoxide separately; zsm continues to work without it.
 
 When zsm runs inside a zmx session, selecting that same session exits the manager.
 Its preview is hidden to avoid recursively displaying the manager itself.

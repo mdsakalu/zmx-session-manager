@@ -74,10 +74,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		maxW := previewMaxWidth(m.preview)
-		limit := maxW - m.previewInnerWidth()
-		if limit < 0 {
-			limit = 0
-		}
+		limit := max(maxW-m.previewInnerWidth(), 0)
 		if m.previewScrollX+4 <= limit {
 			m.previewScrollX += 4
 		} else {
@@ -97,7 +94,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		if m.cursor < len(visible) {
 			if !visible[m.cursor].IsCurrent() {
-				m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachAndReturn}
+				m.attach = AttachRequest{Target: visible[m.cursor].Name, Mode: AttachReplaceProcess}
 			}
 			return m, tea.Quit
 		}
@@ -105,6 +102,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	default:
 		if msg.Text != "" {
 			switch msg.Text {
+			case "z":
+				m.status = "Loading zoxide directories..."
+				return m, func() tea.Msg { return fetchZoxideDirsCmd() }
 			case "w":
 				m.previewWrap = !m.previewWrap
 				m.previewScrollX = 0
@@ -348,10 +348,7 @@ func (m *Model) handleLogScroll(msg tea.KeyPressMsg) {
 	if !isRune(msg, "[") && !isRune(msg, "]") {
 		return
 	}
-	maxOffset := len(m.logLines) - logContentHeight
-	if maxOffset < 0 {
-		maxOffset = 0
-	}
+	maxOffset := max(len(m.logLines)-logContentHeight, 0)
 	if isRune(msg, "[") && m.logOffset > 0 {
 		m.logOffset--
 	}
@@ -371,4 +368,65 @@ func (m *Model) ensureVisible() {
 	if m.cursor >= m.listOffset+h {
 		m.listOffset = m.cursor - h + 1
 	}
+}
+
+func (m Model) handleDirectoryKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	visible := m.visibleSessions()
+	if msg.Code == tea.KeyEscape {
+		m.directoryMode = false
+		m.filterText = ""
+		m.status = ""
+		m.markVisibleChanged()
+		m.cursor = 0
+		return m, m.previewCmd()
+	}
+	switch msg.Code {
+	case tea.KeyUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.ensureVisible()
+		}
+	case tea.KeyDown:
+		if m.cursor < len(visible)-1 {
+			m.cursor++
+			m.ensureVisible()
+		}
+	case tea.KeyEnter:
+		if m.cursor >= len(visible) {
+			return m, nil
+		}
+		dir := visible[m.cursor].StartedIn
+		base := visible[m.cursor].Name
+		if base == "." || base == string(os.PathSeparator) || base == "" {
+			base = "root"
+		}
+		name := m.availableSessionName(base)
+		m.attach = AttachRequest{Target: name, Mode: AttachAndReturn, NewSession: true, WorkingDir: dir}
+		return m, tea.Quit
+	case tea.KeyBackspace:
+		if m.filterText != "" {
+			runes := []rune(m.filterText)
+			m.filterText = string(runes[:len(runes)-1])
+			m.markVisibleChanged()
+			m.cursor = 0
+		}
+	default:
+		if msg.Text == "/" {
+			m.state = stateFilter
+			return m, nil
+		}
+		if msg.Text == "r" {
+			return m, func() tea.Msg { return fetchZoxideDirsCmd() }
+		}
+		if msg.Text == "q" {
+			return m, tea.Quit
+		}
+		if msg.Text != "" {
+			m.filterText += msg.Text
+			m.markVisibleChanged()
+			m.cursor = 0
+			m.listOffset = 0
+		}
+	}
+	return m, nil
 }

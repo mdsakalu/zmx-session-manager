@@ -43,7 +43,7 @@ func readProcessTable() (rss map[int]uint64, children map[int][]int, etime map[i
 		return
 	}
 
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 4 {
 			continue

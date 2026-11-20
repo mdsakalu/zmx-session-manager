@@ -13,7 +13,7 @@ import (
 
 func previewMaxWidth(raw string) int {
 	maxW := 0
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		if w := ansi.StringWidth(line); w > maxW {
 			maxW = w
 		}
@@ -47,10 +47,7 @@ func (m *Model) renderPreview(height int) string {
 
 func (m Model) mainContentHeight(helpLines int) int {
 	// 4 = 2 (list/preview borders) + 2 (log borders)
-	h := m.height - logContentHeight - 4 - helpLines
-	if h < 1 {
-		h = 1
-	}
+	h := max(m.height-logContentHeight-4-helpLines, 1)
 	return h
 }
 
@@ -67,10 +64,7 @@ func (m *Model) listOuterWidth() int {
 
 	metrics := m.allSessionMetrics()
 	// 2 (indicator) + name + " " + pid + " " + mem + " " + uptime + " " + client + 2 (borders)
-	w := 2 + metrics.nameW + 1 + metrics.pidW + 1 + metrics.memW + 1 + metrics.uptimeW + 1 + metrics.clientW + 2
-	if w < titleMin {
-		w = titleMin
-	}
+	w := max(2+metrics.nameW+1+metrics.pidW+1+metrics.memW+1+metrics.uptimeW+1+metrics.clientW+2, titleMin)
 	if w > listMaxOuterWidth {
 		w = listMaxOuterWidth
 	}
@@ -86,10 +80,7 @@ func (m *Model) listInnerWidth() int {
 }
 
 func (m *Model) previewOuterWidth() int {
-	w := m.width - m.listOuterWidth()
-	if w < 10 {
-		w = 10
-	}
+	w := max(m.width-m.listOuterWidth(), 10)
 	return w
 }
 
@@ -123,7 +114,10 @@ func (m Model) View() tea.View {
 	listContent = clampLines(listContent, ch)
 
 	listTitleLeft := fmt.Sprintf(" zmx sessions (%d) ", len(visible))
-	if len(visible) != len(m.sessions) {
+	if m.directoryMode {
+		listTitleLeft = fmt.Sprintf(" zoxide directories (%d) ", len(visible))
+	}
+	if !m.directoryMode && len(visible) != len(m.sessions) {
 		listTitleLeft = fmt.Sprintf(" zmx (%d/%d) ", len(visible), len(m.sessions))
 	}
 	sortArrow := "↑"
@@ -131,6 +125,9 @@ func (m Model) View() tea.View {
 		sortArrow = "↓"
 	}
 	listTitleRight := fmt.Sprintf(" %s %s ", sortArrow, m.sortMode.label())
+	if m.directoryMode {
+		listTitleRight = " zoxide query --list "
+	}
 
 	low := m.listOuterWidth()
 	listPane := listBorderStyle.
@@ -145,6 +142,13 @@ func (m Model) View() tea.View {
 
 	// --- Preview pane ---
 	previewContent := m.renderPreview(ch)
+	if m.directoryMode {
+		if m.cursor < len(visible) {
+			previewContent = "\n  " + visible[m.cursor].StartedIn + "\n\n  Enter: create/attach a session in this directory\n"
+		} else {
+			previewContent = "\n  No directories found in zoxide database."
+		}
+	}
 	previewTitleLeft := " Preview "
 	previewTitleRight := ""
 	if m.cursor < len(visible) {
@@ -199,14 +203,8 @@ func (m Model) renderLog() string {
 		return logDimStyle.Render("  No activity yet.")
 	}
 
-	end := m.logOffset + logContentHeight
-	if end > len(m.logLines) {
-		end = len(m.logLines)
-	}
-	start := m.logOffset
-	if start < 0 {
-		start = 0
-	}
+	end := min(m.logOffset+logContentHeight, len(m.logLines))
+	start := max(m.logOffset, 0)
 
 	var b strings.Builder
 	for i := start; i < end; i++ {
@@ -224,6 +222,9 @@ func (m *Model) renderList(maxRows int) string {
 		if m.filterText != "" {
 			return normalStyle.Render("  No matches. Esc to clear filter.")
 		}
+		if m.directoryMode {
+			return normalStyle.Render("  No directories found. Press ") + helpKeyStyle.Render("r") + normalStyle.Render(" to refresh.")
+		}
 		return normalStyle.Render("  No sessions found. Press ") +
 			helpKeyStyle.Render("n") +
 			normalStyle.Render(" to create or ") +
@@ -235,10 +236,7 @@ func (m *Model) renderList(maxRows int) string {
 	metrics := m.visibleMetrics
 	var b strings.Builder
 
-	end := m.listOffset + maxRows
-	if end > len(visible) {
-		end = len(visible)
-	}
+	end := min(m.listOffset+maxRows, len(visible))
 
 	for i := m.listOffset; i < end; i++ {
 		s := visible[i]
@@ -279,10 +277,7 @@ func (m *Model) renderList(maxRows int) string {
 		uptimeStr := uptimeStyle.Render(padLeft(uptimeLabel, metrics.uptimeW))
 
 		// lw = indicator(2) + name + " " + pid + " " + mem + " " + uptime + " " + client
-		nameWidth := lw - 6 - metrics.pidW - metrics.memW - metrics.uptimeW - metrics.clientW
-		if nameWidth < 10 {
-			nameWidth = 10
-		}
+		nameWidth := max(lw-6-metrics.pidW-metrics.memW-metrics.uptimeW-metrics.clientW, 10)
 		name := truncate(s.Name, nameWidth)
 		paddedName := padRight(name, nameWidth)
 
@@ -309,6 +304,9 @@ func (m *Model) renderList(maxRows int) string {
 }
 
 func (m Model) renderHelp() string {
+	if m.directoryMode && m.state != stateFilter {
+		return helpStyle.Render(" zoxide directories  ") + helpKeyStyle.Render("↑↓") + helpStyle.Render(" navigate  ") + helpKeyStyle.Render("enter") + helpStyle.Render(" create session  ") + helpKeyStyle.Render("/") + helpStyle.Render(" filter  ") + helpKeyStyle.Render("r") + helpStyle.Render(" refresh  ") + helpKeyStyle.Render("esc") + helpStyle.Render(" back")
+	}
 	if m.state == stateKilling {
 		return helpStyle.Render(" [] scroll log  ") + helpKeyStyle.Render("q") + helpStyle.Render(" quit")
 	}
@@ -344,8 +342,9 @@ func (m Model) renderHelp() string {
 		helpKeyStyle.Render("↑↓") + helpStyle.Render(" nav"),
 		helpKeyStyle.Render("space") + helpStyle.Render(" sel"),
 		helpKeyStyle.Render("^a") + helpStyle.Render(" all"),
-		helpKeyStyle.Render("enter") + helpStyle.Render(" attach"),
+		helpKeyStyle.Render("enter") + helpStyle.Render(" attach & exit"),
 		helpKeyStyle.Render("n") + helpStyle.Render(" new"),
+		helpKeyStyle.Render("z") + helpStyle.Render(" zoxide"),
 		helpKeyStyle.Render("e") + helpStyle.Render(" exec"),
 		helpKeyStyle.Render("k") + helpStyle.Render(" kill"),
 		helpKeyStyle.Render("c") + helpStyle.Render(" copy cmd"),
@@ -424,10 +423,7 @@ func buildTopBorderLRStyled(left, right string, outerWidth int, rs lipgloss.Styl
 		rightVW = lipgloss.Width(styledRight)
 	}
 
-	maxVW := outerWidth - 4
-	if maxVW < 1 {
-		maxVW = 1
-	}
+	maxVW := max(outerWidth-4, 1)
 
 	// Truncate right (dir) first to preserve left (session name)
 	if leftVW+rightVW > maxVW {
@@ -449,10 +445,7 @@ func buildTopBorderLRStyled(left, right string, outerWidth int, rs lipgloss.Styl
 		leftVW = lipgloss.Width(styledLeft)
 	}
 
-	fill := outerWidth - 3 - leftVW - rightVW
-	if fill < 0 {
-		fill = 0
-	}
+	fill := max(outerWidth-3-leftVW-rightVW, 0)
 
 	result := borderCharStyle.Render("╭─") + styledLeft
 	if styledRight != "" {
@@ -467,10 +460,7 @@ func buildBottomBorderR(right string, outerWidth int) string {
 	styledRight := selectedStyle.Render(right)
 	rightVW := lipgloss.Width(styledRight)
 	// ╰ (1) + fill + right (rightVW) + ╯ (1) = outerWidth
-	fill := outerWidth - 2 - rightVW
-	if fill < 0 {
-		fill = 0
-	}
+	fill := max(outerWidth-2-rightVW, 0)
 	return borderCharStyle.Render("╰"+strings.Repeat("─", fill)) + styledRight + borderCharStyle.Render("╯")
 }
 

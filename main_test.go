@@ -308,3 +308,38 @@ func TestInformationFlagsAndInvalidCLI(t *testing.T) {
 		}
 	}
 }
+
+func TestAttachNewSessionUsesSelectedWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	workdir := filepath.Join(root, "project")
+	if err := os.Mkdir(workdir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "cwd")
+	t.Setenv("ZSM_TEST_TARGET", output)
+	command := filepath.Join(root, "zmx")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\npwd > \"$ZSM_TEST_TARGET\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	err := attachToSession(command, tui.AttachRequest{Target: "project", Mode: tui.AttachAndReturn, NewSession: true, WorkingDir: workdir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The shell reports the resolved physical path (e.g. /private/var on
+	// macOS), so resolve symlinks before comparing.
+	want, err := filepath.EvalSymlinks(workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotDir, err := filepath.EvalSymlinks(strings.TrimSpace(string(got)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDir != want {
+		t.Fatalf("working directory = %q, want %q", got, workdir)
+	}
+}
