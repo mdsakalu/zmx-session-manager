@@ -3,11 +3,11 @@ module github.com/mdsakalu/zmx-session-manager
 go 1.26.7
 
 require (
-	charm.land/bubbletea/v2 v2.1.1
-	charm.land/lipgloss/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.2
+	charm.land/lipgloss/v2 v2.1.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/atotto/clipboard v0.1.4
-	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/charmbracelet/x/ansi v0.11.10
 	github.com/mattn/go-runewidth v0.0.31
 )
 
